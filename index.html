@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#151719" />
+  <meta name="description" content="Your private, unscripted voice diary." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>Unscripted · Your thoughts, kept.</title>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <button id="homeLogo" class="brand" type="button" aria-label="Go to home">
+        <span class="brand-mark">◌</span><span>unscripted<span class="brand-period">.</span></span>
+      </button>
+      <button id="settingsButton" class="icon-button" type="button" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6M15 14v6"/></svg></button>
+    </header>
+    <main>
+      <section id="homeView" class="view">
+        <div class="eyebrow"><span class="dot"></span> YOUR THOUGHT SPACE</div>
+        <h1>Whatever's on<br><em>your mind.</em></h1>
+        <p class="intro">No prompts. No pressure. Just you, thinking out loud.</p>
+        <section class="record-hero" aria-label="Start a recording">
+          <div class="record-hero-glow"></div>
+          <button id="startNewButton" class="record-circle" type="button" aria-label="Start a new recording">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="11" y="4" width="10" height="17" rx="5"/><path d="M6 15v2a10 10 0 0 0 20 0v-2M16 27v3M10 30h12"/></svg>
+          </button>
+          <div class="record-heading">Tap to start talking</div>
+          <div class="record-subheading">Long rambles very welcome.</div>
+          <button class="subtle-link" id="continueLastButton" type="button" hidden>↗ Continue your last entry</button>
+        </section>
+        <section class="library-section">
+          <div class="section-title-row"><h2>Your library</h2><span id="entryCount" class="count-pill">0 entries</span></div>
+          <div class="search-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input id="searchInput" type="search" placeholder="Search your thoughts..." aria-label="Search entries" /></div>
+          <div id="topicFilters" class="filter-strip" aria-label="Filter by topic"></div>
+          <div id="entriesList" class="entries-list"></div>
+        </section>
+      </section>
+      <section id="entryView" class="view" hidden>
+        <button class="back-link" id="entryBack" type="button">← Back to library</button>
+        <div class="entry-meta" id="entryDate"></div>
+        <div class="entry-title-line"><h1 id="entryTitle"></h1><button id="editTitleButton" type="button" class="icon-button small" aria-label="Edit title" title="Edit title">✎</button></div>
+        <p class="entry-sub-meta" id="entryDuration"></p>
+        <div class="section-title-row margin-top"><h2>Recordings & notes</h2><button id="addToEntryButton" class="action-small" type="button">＋ Add to entry</button></div>
+        <div id="entryParts" class="parts-list"></div>
+        <div id="entryActions" class="entry-action-row"><button id="playAllButton" class="button-soft" type="button">▶ Play all</button><button id="transcribeButton" class="button-soft" type="button">✦ Transcribe & refresh summary</button><button id="addNoteButton" class="button-soft" type="button">＋ Write a thought</button></div>
+        <div id="entryStatus" class="notice" hidden></div>
+        <section class="entry-block"><div class="section-title-row"><h2>In a nutshell</h2><button id="editSummaryButton" class="text-action" type="button">Edit</button></div><p id="entrySummary" class="summary-text"></p></section>
+        <section class="entry-block"><div class="section-title-row"><h2>Topics</h2><button id="addTopicButton" class="text-action" type="button">Edit topics ＋</button></div><div id="entryTags" class="tag-row"></div></section>
+        <section class="entry-block"><button id="transcriptToggle" class="collapse-trigger" type="button" aria-expanded="false"><span>Full transcription</span><span id="transcriptArrow">⌄</span></button><div id="transcriptArea" hidden></div></section>
+        <button id="deleteEntryButton" class="danger-quiet" type="button">Delete this entry</button>
+      </section>
+      <section id="askView" class="view" hidden>
+        <div class="eyebrow"><span class="dot"></span> ASK YOUR ARCHIVE</div>
+        <h1>Ask your<br><em>past self.</em></h1>
+        <p class="intro">Explore your opinions, connections and contradictions through what you've actually said.</p>
+        <div class="ask-suggestions"><button class="suggestion" type="button">How has my thinking changed over time?</button><button class="suggestion" type="button">What ideas do I keep coming back to?</button><button class="suggestion" type="button">Where have I contradicted myself?</button></div>
+        <form id="askForm" class="ask-form"><textarea id="askInput" rows="3" placeholder="Ask anything about your recordings..." aria-label="Question for your diary"></textarea><button class="button-primary" type="submit" id="askSubmit">Ask my diary →</button></form>
+        <div id="askStatus" class="notice" hidden></div>
+        <div id="askResult" class="ask-result" hidden></div>
+      </section>
+      <section id="settingsView" class="view" hidden>
+        <button class="back-link" id="settingsBack" type="button">← Back</button>
+        <div class="eyebrow"><span class="dot"></span> MAKE IT YOURS</div>
+        <h1>A little<br><em>housekeeping.</em></h1>
+        <section class="settings-card"><h2>Connect AI</h2><p class="muted">The recorder and archive work without AI. To enable automatic transcription, summaries and questions, connect your private AI backend.</p><label for="apiUrl">Backend address</label><input id="apiUrl" type="url" placeholder="https://your-worker.workers.dev" spellcheck="false" /><label for="accessCode">Private access code</label><input id="accessCode" type="password" placeholder="Your backend access code" autocomplete="off" /><label class="checkbox-label" for="rememberCode"><input id="rememberCode" type="checkbox" /> Remember access code on this device</label><p class="tiny">Your OpenAI API key belongs on the backend. By default this access code stays only in this tab; opting in stores it in this browser, so only do so on a trusted device and dedicated diary domain.</p><button id="saveApiSettings" class="button-primary" type="button">Save connection</button><div id="settingsStatus" class="notice" hidden></div></section>
+        <section class="settings-card"><h2>Accent colour</h2><p class="muted">Give the diary your own little splash of colour.</p><button id="accentPickerButton" class="accent-button" type="button"><span id="accentSwatch"></span> Choose a hue ↗</button></section>
+        <section class="settings-card"><h2>Your recordings stay yours</h2><p class="muted">Audio, notes and entries live in this browser's local storage. Clearing browser data, changing devices or losing your phone can erase them. Export regular backups.</p><div class="settings-actions"><button id="exportBackup" class="button-soft" type="button">↓ Export backup</button><button id="importBackup" class="button-soft" type="button">↑ Import backup</button></div><input id="backupInput" type="file" accept=".json,application/json" hidden /><p class="tiny">Backups include audio and are not encrypted. Store them somewhere private. Import merges entries with matching IDs.</p></section>
+        <section class="settings-card"><h2>About recording</h2><p class="muted">The app saves short, independently playable audio clips while you record. Please keep the app open and your phone awake when recording. Check available device storage for long sessions. You can pause, resume and add separate recordings later.</p></section>
+      </section>
+    </main>
+    <nav class="bottom-nav" aria-label="Main navigation"><button id="navLibrary" type="button" class="nav-item selected"><span>⌂</span><small>Library</small></button><button id="navRecord" type="button" class="nav-record" aria-label="Record a new thought">＋</button><button id="navAsk" type="button" class="nav-item"><span>✦</span><small>Ask diary</small></button></nav>
+  </div>
+
+  <div id="recorderSheet" class="sheet-backdrop" hidden><section class="recorder-sheet" aria-modal="true" role="dialog" aria-labelledby="recordSheetTitle"><div class="sheet-grip"></div><div class="eyebrow">A MOMENT FOR YOUR THOUGHTS</div><h2 id="recordSheetTitle">Just talk.</h2><p id="recordTarget" class="muted">New entry</p><div class="live-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div id="recordTimer" class="record-timer">00:00</div><div id="recordState" class="muted recorder-state">Recording in progress</div><div class="record-controls"><button id="pauseRecording" type="button" class="button-soft">Ⅱ Pause</button><button id="finishRecording" type="button" class="button-primary">■ Save recording</button></div><p class="tiny center">Recording clips are saved automatically every few minutes. Keep this page open and your screen awake.</p></section></div>
+  <div id="editorModal" class="modal-backdrop" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="editorTitle"><div class="modal-title-row"><h2 id="editorTitle">Edit</h2><button class="icon-button small" id="closeEditor" type="button" aria-label="Close">×</button></div><label for="editorInput" id="editorLabel"></label><textarea id="editorInput" rows="5"></textarea><div class="modal-actions"><button id="editorCancel" type="button" class="button-soft">Cancel</button><button id="editorSave" type="button" class="button-primary">Save</button></div></section></div>
+  <div id="choiceModal" class="modal-backdrop" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="choiceTitle"><div class="modal-title-row"><h2 id="choiceTitle">Add to entry</h2><button id="choiceClose" class="icon-button small" type="button" aria-label="Close">×</button></div><p class="muted">Keep adding thoughts, even if it's five minutes later.</p><button id="choiceRecord" class="modal-choice" type="button">🎙 &nbsp; Record another thought</button><button id="choiceWrite" class="modal-choice" type="button">✎ &nbsp; Write something instead</button></section></div>
+  <div id="colourModal" class="modal-backdrop" hidden><section class="modal colour-dialog" role="dialog" aria-modal="true" aria-labelledby="colourTitle"><div class="modal-title-row"><h2 id="colourTitle">Choose a hue</h2><button id="colourClose" class="icon-button small" type="button">×</button></div><div class="colour-wheel" id="colourWheel"><span id="colourCursor" class="colour-cursor"></span></div><div class="section-title-row"><label for="brightness">Brightness</label><span id="hexReadout" class="tiny"></span></div><input id="brightness" type="range" min="0" max="100" value="100" class="brightness" /><div class="section-title-row"><span class="tiny">Live preview</span><span id="colourPreview" class="colour-preview"></span></div><div class="tiny">Recent colours</div><div id="recentColours" class="recent-colours"></div><div class="modal-actions"><button id="resetAccent" class="button-soft" type="button">Reset</button><button id="doneAccent" class="button-primary" type="button">Done</button></div></section></div>
+  <div id="toast" role="status" aria-live="polite" class="toast" hidden></div>
+  <script src="app.js" defer></script>
+</body>
+</html>

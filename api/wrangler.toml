@@ -1,0 +1,8 @@
+name = "unscripted-private-ai"
+main = "worker.js"
+compatibility_date = "2026-10-12"
+
+# IMPORTANT: replace with the exact origin (no path or trailing slash)
+# of your own dedicated diary website before deploying.
+[vars]
+ALLOWED_ORIGIN = "https://your-private-diary-domain.example"
