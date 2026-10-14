@@ -144,3 +144,7 @@ Recordings use one full-length seekable player per session; two-minute autosave 
 Validation: `node tests/recording-player.cjs` covers cross-clip seeking and playback continuation.
 
 Always lock on opening (Private sign-in) is a per-device screen lock, enabled only after a verified passkey check. It covers and makes the diary inert before initial rendering, locks on backgrounding and page restoration, and pauses the main recorder and playback. Unlock needs fresh server-verified passkey authentication or the diary access code, with an internet connection. A signed-in session alone does not dismiss the cover. This does not encrypt the local IndexedDB or protect against someone accessing browser storage/developer tools; use your phone's device lock too.
+
+Another perspective opens a question-and-answer dialog with typed or recorded answers, pause/resume, a live microphone meter and editable transcription. Save atomically stores a marked reflection note and its original audio in the current entry; cancelling or replacing the question discards the draft. Reflections appear separately at the bottom but participate in local search, dated Ask diary sources, transcript export and encrypted backups. Existing unanswered reflection questions remain visible. Voice answers pause when the app is backgrounded, and each recording is capped at ten active minutes or 24 MB.
+
+Reflection checks: `node tests/perspective-client.cjs` and `node tests/recording.cjs`.

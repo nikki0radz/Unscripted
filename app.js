@@ -24,7 +24,7 @@
   async function refreshEntries() { state.entries = (await transaction("entries", "readonly", (s) => s.getAll()) || []).sort((a, b) => b.createdAt.localeCompare(a.createdAt)); }
   const currentEntry = () => state.entries.find((entry) => entry.id === state.selected);
   const allParts = (entry) => entry.parts || [];
-  const allClips = (entry) => allParts(entry).filter((p) => p.type === "recording").flatMap((p) => p.clips || []);
+  const allClips = (entry) => allParts(entry).filter((p) => p.type === "recording" || p.reflectionAnswer).flatMap((p) => p.clips || []);
   const totalTime = (entry) => allClips(entry).reduce((sum, clip) => sum + (clip.duration || 0), 0);
   const transcriptText = (entry) => allParts(entry).map((part) => part.type === "note" ? (part.text || "") : (part.clips || []).map((c) => c.transcript || "").join(" ")).join("\n");
   const sortedParts = (entry) => allParts(entry).slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -72,17 +72,17 @@
   function openEntry(id) { state.selected = id; state.openTranscript = false; $("transcriptArea").hidden = true; $("transcriptToggle").setAttribute("aria-expanded", "false"); switchView("entry"); }
   function renderEntry() {
     const entry = currentEntry(); if (!entry) { switchView("home"); return; }
-    renderReflection(entry);
     document.querySelectorAll(".recording-player").forEach(player => player.dispose());
     revokeUrls();
+    renderReflection(entry);
     $("entryDate").textContent = fmtDate(entry.createdAt, true).toUpperCase();
     $("entryTitle").textContent = entry.title || "Untitled thought";
     $("interviewEntryStatus").hidden=entry.kind!=="interview";
     $("interviewEntryStatus").textContent=entry.kind==="interview"?"✦ Interview · "+(entry.interview?.goal||"Explore your thoughts"):"";
     const clips = allClips(entry);
-    $("entryDuration").textContent = `${sortedParts(entry).filter((p) => p.type === "recording").length} recording(s) · ${audioTime(totalTime(entry))} of audio · ${sortedParts(entry).filter((p) => p.type === "note").length} written note(s)`;
+    $("entryDuration").textContent = `${sortedParts(entry).filter((p) => p.type === "recording").length} recording(s) · ${audioTime(totalTime(entry))} of audio · ${sortedParts(entry).filter((p) => p.type === "note" && !p.reflectionAnswer).length} written note(s) · ${sortedParts(entry).filter(p=>p.reflectionAnswer).length} reflection(s)`;
     const container = $("entryParts"); container.replaceChildren();
-    sortedParts(entry).forEach((part, index) => {
+    sortedParts(entry).filter(part => !part.reflectionAnswer).forEach((part, index) => {
       const box = make("div", "part-card"); const head = make("div", "part-head");
       head.append(make("strong", "", part.type === "note" ? (part.interviewQuestion ? "✦ Interview question " : "✎ Written addition ") + (index + 1) : "🎙 Recording " + (index + 1)), make("small", "", fmtDate(part.createdAt) + " · " + fmtTime(part.createdAt)));
       box.append(head);
@@ -114,7 +114,7 @@
   function renderTranscript(entry) {
     const target = $("transcriptArea"); target.replaceChildren();
     for (const part of sortedParts(entry)) {
-      const div = make("div", "transcript-part"); div.append(make("div", "transcript-head", (part.type === "note" ? "Written note" : "Voice recording") + " · " + fmtDate(part.createdAt) + " at " + fmtTime(part.createdAt)));
+      const div = make("div", "transcript-part"); div.append(make("div", "transcript-head", (part.reflectionAnswer ? "Reflection · question & answer" : part.type === "note" ? "Written note" : "Voice recording") + " · " + fmtDate(part.createdAt) + " at " + fmtTime(part.createdAt)));
       const body = part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || "[Audio waiting for transcription]").join("\n\n");
       div.append(make("p", "", body || "No transcript yet.")); target.append(div);
     }
@@ -138,7 +138,7 @@
   function supportedMime() { if (!window.MediaRecorder) return ""; return ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg;codecs=opus"].find((type) => MediaRecorder.isTypeSupported(type)) || ""; }
   async function startRecording(entryId) {
     if (state.recording) return;
-    if (window.UnscriptedQuiz?.recording()) {showToast("Finish your quiz voice answer first.");return;}
+    if (window.UnscriptedPerspective?.recording() || window.UnscriptedQuiz?.recording()) {showToast("Finish your quiz voice answer first.");return;}
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder || !window.indexedDB) { showToast("This browser does not support recording. Use Chrome on HTTPS or localhost."); return; }
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false }); }
@@ -397,48 +397,59 @@
     } catch (error) { notice("askStatus", "Could not analyse diary: " + error.message, true); }
     finally { $("askSubmit").disabled = false; }
   }
-  const reflecting = new Set();
   function renderReflection(entry) {
-    const last = (entry.reflections || []).at(-1);
-    $("reflectionQuestion").textContent = last?.question || "";
-    $("reflectionQuestion").hidden = !last;
-    $("reflectButton").disabled = reflecting.has(entry.id);
-    $("perspectiveActionLabel").innerHTML = reflecting.has(entry.id) ? "Finding a<br>perspective…" : "Another<br>perspective";
-    const target = $("reflectionSources"); target.replaceChildren();
-    for (const id of last?.sourceIds || []) {
-      const source = state.entries.find(e => e.id === id); if (!source) continue;
-      const button = make("button", "source-link", fmtDate(source.createdAt) + " · " + source.title);
-      button.type = "button"; button.onclick = () => openEntry(id); target.append(button);
+    $("reflectionQuestion").hidden=true;
+    const target=$("reflectionSources");target.replaceChildren();
+    const saved=sortedParts(entry).filter(part=>part.reflectionAnswer);
+    const legacy=(entry.reflections||[]).map(item=>({...item,legacy:true}));
+    for(const item of [...legacy,...saved]){
+      const card=make("section","reflection-answer-card");
+      card.append(make("div","tiny",fmtDate(item.createdAt,true)),make("h3","reflection-question",item.question));
+      if(!item.legacy){
+        card.append(make("div","tiny","Your answer"),make("p","reflection-answer-text",item.answer));
+        if(item.clips?.length)card.append(window.UnscriptedRecordingPlayer.create(item.clips,getAudio,"reflection answer"));
+        const edit=make("button","text-action","Edit answer");edit.type="button";edit.onclick=()=>openEditor("Edit reflection answer",item.answer,async value=>{
+          if(!value.trim())return;
+          const fresh=await transaction("entries","readonly",store=>store.get(entry.id));
+          const part=fresh?.parts.find(p=>p.id===item.id);if(!part)throw Error("This reflection no longer exists.");
+          part.answer=value;part.text="Reflection question: "+part.question+"\nYour answer: "+value;
+          await saveEntry(fresh);await refreshEntries();renderEntry();
+        });card.append(edit);
+      }
+      for(const id of item.sourceIds||[]){const source=state.entries.find(e=>e.id===id);if(!source)continue;const button=make("button","source-link",fmtDate(source.createdAt)+" · "+source.title);button.type="button";button.onclick=()=>openEntry(id);card.append(button);}
+      target.append(card);
     }
   }
-  async function reflectEntry() {
-    const entry = currentEntry(); if (!entry || reflecting.has(entry.id)) return;
-    notice("reflectionStatus", "");
-    if (!activeAI()) { notice("reflectionStatus", "Connect AI in Settings first.", true); return; }
-    const text = transcriptText(entry).trim();
-    if (!text) { notice("reflectionStatus", "Transcribe this recording first, or add a written thought.", true); return; }
-    reflecting.add(entry.id); renderReflection(entry);
-    try {
-      const { sources, truncated } = chooseAskSources(entry.title + " " + (entry.tags || []).join(" ") + " " + text.slice(-2500));
-      const history = sources.filter(x => x.id !== entry.id).slice(0,12).map(x => ({...x, text:x.text.slice(0,2500)}));
-      const result = await callAI("/reflect", {
-        entry: { id: entry.id, date: entry.createdAt, text: text.slice(0,24000) },
-        sources: history, profile: ("ABOUT ME: "+(localStorage.getItem("unscripted-personal-profile")||"").slice(0,2000)+"\nREFLECTION CONTEXT: "+(localStorage.getItem("unscripted-reflection-profile")||"").slice(0,2000)).slice(0,4100),
-        previous: (entry.reflections || []).slice(-12).map(x => x.question),
-        truncated: truncated || text.length > 24000 || sources.length > history.length + 1
-      });
-      if (typeof result.question !== "string" || !result.question.trim()) throw new Error("No reflection question returned.");
-      // Retrieve the freshest row so edits made during the request are preserved.
-      const fresh = await transaction("entries", "readonly", s => s.get(entry.id));
-      if (!fresh) return;
-      fresh.reflections = [...(fresh.reflections || []), {question: result.question, sourceIds: result.sourceIds || [], createdAt: new Date().toISOString()}].slice(-50);
-      await saveEntry(fresh); await refreshEntries();
-      if (state.selected === entry.id) {
-        renderReflection(currentEntry());
-        notice("reflectionStatus", "Based on this entry, your saved context and selected diary excerpts. History may be incomplete.");
-      }
-    } catch (error) { if (state.selected === entry.id) notice("reflectionStatus", error.message, true); }
-    finally { reflecting.delete(entry.id); if (state.selected === entry.id && currentEntry()) renderReflection(currentEntry()); }
+  async function perspectiveQuestion(id,previous=[]) {
+    if(state.processing.has(id))throw Error("Wait for this entry’s summary to finish, then try again.");
+    const entry=state.entries.find(e=>e.id===id);if(!entry)throw Error("This entry no longer exists.");
+    if(!activeAI())throw Error("Connect AI in Settings first.");
+    const text=transcriptText(entry).trim();if(!text)throw Error("Refresh the summary to transcribe your recording first, or add a written thought.");
+    const {sources,truncated}=chooseAskSources(entry.title+" "+(entry.tags||[]).join(" ")+" "+text.slice(-2500));
+    const history=sources.filter(x=>x.id!==entry.id).slice(0,12).map(x=>({...x,text:x.text.slice(0,2500)}));
+    const result=await callAI("/reflect",{entry:{id:entry.id,date:entry.createdAt,text:text.slice(0,24000)},sources:history,
+      profile:("ABOUT ME: "+(localStorage.getItem("unscripted-personal-profile")||"").slice(0,2000)+"\nREFLECTION CONTEXT: "+(localStorage.getItem("unscripted-reflection-profile")||"").slice(0,2000)).slice(0,4100),
+      previous:[...(entry.reflections||[]).map(x=>x.question),...allParts(entry).filter(p=>p.reflectionAnswer).map(p=>p.question),...previous].slice(-12),
+      truncated:truncated||text.length>24000||sources.length>history.length+1});
+    if(typeof result.question!=="string"||!result.question.trim())throw Error("No question returned. Try again.");
+    return {...result,sourceIds:(result.sourceIds||[]).filter(id=>id===entry.id||history.some(x=>x.id===id))};
+  }
+  async function savePerspective(id,doc) {
+    if(state.processing.has(id))throw Error("Wait for the summary to finish, then save again.");
+    if(!doc.answer?.trim()||!doc.question?.trim())throw Error("Answer the question before saving.");
+    const audioRows=(doc.audio||[]).map(row=>({id:uid(),blob:row.blob,duration:row.duration}));
+    await new Promise((resolve,reject)=>{
+      const tx=state.db.transaction(["entries","audio"],"readwrite"),entries=tx.objectStore("entries"),req=entries.get(id);
+      req.onsuccess=()=>{const entry=req.result;if(!entry){tx.abort();return;}
+        const part={id:uid(),type:"note",reflectionAnswer:true,createdAt:new Date().toISOString(),question:doc.question,answer:doc.answer.trim(),sourceIds:doc.sourceIds||[],
+          text:"Reflection question: "+doc.question+"\nYour answer: "+doc.answer.trim(),clips:audioRows.map(row=>({id:row.id,duration:row.duration,mime:row.blob.type,transcript:doc.answer.trim()}))};
+        for(const row of audioRows)tx.objectStore("audio").put({id:row.id,blob:row.blob});
+        entry.parts=[...(entry.parts||[]),part];entry.updatedAt=part.createdAt;entries.put(entry);
+      };
+      tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error("Could not save this reflection. The entry may have been deleted."));
+    });
+    await refreshEntries();window.dispatchEvent(new Event("unscripted-change"));
+    if(state.selected===id){renderEntry();document.querySelector(".reflection-card").scrollIntoView({behavior:"smooth",block:"start"});}
   }
   async function deleteEntry() { const entry = currentEntry(); if (!entry || !await window.UnscriptedConfirm("Delete this entry and all its audio? This cannot be undone. Older cloud backups may still contain it.",{title:"Delete this entry?",confirmLabel:"Delete entry",danger:true})) return; try { for (const clip of allClips(entry)) await deleteAudio(clip.id); await transaction("entries", "readwrite", (s) => s.delete(entry.id)); await refreshEntries(); window.dispatchEvent(new Event("unscripted-change")); switchView("home"); showToast("Entry deleted. Older cloud backups may still contain this entry."); } catch (error) { showToast("Delete failed: " + error.message); } }
   function blobToDataURL(blob) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob); }); }
@@ -494,7 +505,7 @@
     $("transcriptToggle").onclick=()=>{state.openTranscript=!state.openTranscript;renderEntry();};$("transcribeButton").onclick=()=>{const entry=currentEntry();if(entry)processEntry(entry.id);};$("deleteEntryButton").onclick=deleteEntry;
     $("closeEditor").onclick=closeEditor;$("editorCancel").onclick=closeEditor;$("editorSave").onclick=submitEditor;$("editorModal").onclick=(e)=>{if(e.target===$("editorModal"))closeEditor();};
     $("choiceModal").onclick=(e)=>{if(e.target===$("choiceModal"))closeChoice();};
-    $("reflectButton").onclick=()=>{document.querySelector(".reflection-card").scrollIntoView({behavior:"smooth",block:"start"});reflectEntry();};
+    $("reflectButton").onclick=()=>{const entry=currentEntry();if(entry)window.UnscriptedPerspective.open(entry.id);};
 
     $("privateSignOut").onclick=async()=>{if(state.recording){showToast("Save your recording first.");return;}try{const r=await fetch("/logout",{method:"POST"});if(!r.ok)throw Error("Sign-out failed");localStorage.removeItem("unscripted-access-code");sessionStorage.removeItem("unscripted-access-code");if("caches" in window)for(const name of await caches.keys())if(name.startsWith("unscripted-"))await caches.delete(name);location.reload();}catch(e){showToast(e.message);}};
     $("saveApiSettings").onclick=saveApiSettings;$("askForm").onsubmit=askDiary;document.querySelectorAll(".suggestion").forEach(b=>b.onclick=()=>{$("askInput").value=b.textContent;$("askInput").focus();});
@@ -517,7 +528,7 @@
   window.UnscriptedDiary = {
     pauseForLock: () => { const rec=state.recording;if(rec&&!rec.closing){rec.paused=true;if(rec.recorder?.state==="recording")flushClip(rec);updateRecorderUI();} },
     config: getApiConfig, entries: () => state.entries, ready: () => !!state.db, recording: () => !!state.recording,
-    audio: getAudio, clips: allClips, exportBackup, callAI, activeAI, toast:showToast, profiles:profileData, restoreProfiles:restoreProfileData, saveInterview, openEntry, sources:chooseAskSources,
+    audio: getAudio, clips: allClips, exportBackup, callAI, activeAI, toast:showToast, profiles:profileData, restoreProfiles:restoreProfileData, saveInterview, savePerspective, perspectiveQuestion, openEntry, sources:chooseAskSources,
     freshEntries: () => transaction("entries", "readonly", s => s.getAll()),
     restore: (entries, audios) => new Promise((resolve,reject) => {
       const tx = state.db.transaction(["entries","audio"], "readwrite");
