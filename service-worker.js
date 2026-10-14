@@ -1,4 +1,4 @@
-const CACHE = 'unscripted-v8';
+const CACHE = 'unscripted-v9';
 const ASSETS = ['./', './index.html', './styles.css', './app.js', './recording-player.js', './manifest.webmanifest', './icon.svg', './icon-192.svg', './icon-512.svg', './icon-192.png', './icon-512.png', './install.js', './backup-crypto.js', './cloud-backup.js', './profile-quiz.js', './dialogs.js', './passkey-client.js'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

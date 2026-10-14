@@ -82,8 +82,6 @@
     const clips = allClips(entry);
     $("entryDuration").textContent = `${sortedParts(entry).filter((p) => p.type === "recording").length} recording(s) · ${audioTime(totalTime(entry))} of audio · ${sortedParts(entry).filter((p) => p.type === "note").length} written note(s)`;
     const container = $("entryParts"); container.replaceChildren();
-    const audioPlayers = [];
-    let playingAll = false;
     sortedParts(entry).forEach((part, index) => {
       const box = make("div", "part-card"); const head = make("div", "part-head");
       head.append(make("strong", "", part.type === "note" ? (part.interviewQuestion ? "✦ Interview question " : "✎ Written addition ") + (index + 1) : "🎙 Recording " + (index + 1)), make("small", "", fmtDate(part.createdAt) + " · " + fmtTime(part.createdAt)));
@@ -95,35 +93,15 @@
       } else {
         const segments = part.clips || [];
         const audio = window.UnscriptedRecordingPlayer.create(segments, getAudio, "recording " + (index + 1));
-        box.append(audio); audioPlayers.push(audio);
+        box.append(audio);
         const pending = segments.filter((s) => !s.transcript).length;
         if (pending) box.append(make("div", "tiny", "Awaiting transcription"));
       }
       container.append(box);
     });
     if (!entry.parts?.length) container.append(make("div", "empty-state", "Add a recording or a written note to begin."));
-    $("playAllButton").disabled = !audioPlayers.length;
-    $("playAllButton").textContent = "▶ Play all";
-    audioPlayers.forEach((audio, index) => audio.addEventListener("unscripted-session-ended", () => {
-      if (!playingAll) return;
-      const next = audioPlayers[index + 1];
-      if (next) next.play().catch(() => showToast("Tap play on the next recording to continue."));
-      else { playingAll = false; $("playAllButton").textContent = "▶ Play all"; }
-    }));
-    $("playAllButton").onclick = () => {
-      if (playingAll) {
-        playingAll = false;
-        audioPlayers.forEach(audio => audio.pause());
-        $("playAllButton").textContent = "▶ Play all";
-      } else {
-        playingAll = true;
-        audioPlayers.forEach(audio => { audio.pause(); audio.restartFromBeginning();  });
-        audioPlayers[0].play().catch(() => { playingAll = false; $("playAllButton").textContent = "▶ Play all"; showToast("Audio is still loading. Try once more."); });
-        $("playAllButton").textContent = "Ⅱ Stop playback";
-      }
-    };
     const busy = state.processing.has(entry.id);
-    $("transcribeButton").disabled = busy; $("transcribeButton").textContent = busy ? "✦ Processing..." : "✦ Transcribe & refresh summary";
+    $("transcribeButton").disabled = busy; $("summaryActionLabel").innerHTML = busy ? "Refreshing<br>summary…" : "Refresh<br>summary";
     notice("entryStatus", busy ? "Working on your transcripts and summary. Keep the page open while it finishes." : entry.aiError ? entry.aiError : (!activeAI() && clips.some((c) => !c.transcript) ? "Audio saved. Connect your private AI backend in Settings to transcribe it automatically." : ""), !!entry.aiError);
     $("entrySummary").textContent = entry.summary || (transcriptText(entry) ? "No summary yet. You can write one yourself or connect AI." : "No summary yet. Your original audio is saved; nothing has been invented.");
     const tags = $("entryTags"); tags.replaceChildren();
@@ -425,7 +403,7 @@
     $("reflectionQuestion").textContent = last?.question || "";
     $("reflectionQuestion").hidden = !last;
     $("reflectButton").disabled = reflecting.has(entry.id);
-    $("reflectButton").textContent = reflecting.has(entry.id) ? "Thinking..." : last ? "↗ Ask me another question" : "↗ Ask me one question";
+    $("perspectiveActionLabel").innerHTML = reflecting.has(entry.id) ? "Finding a<br>perspective…" : "Another<br>perspective";
     const target = $("reflectionSources"); target.replaceChildren();
     for (const id of last?.sourceIds || []) {
       const source = state.entries.find(e => e.id === id); if (!source) continue;
@@ -516,7 +494,7 @@
     $("transcriptToggle").onclick=()=>{state.openTranscript=!state.openTranscript;renderEntry();};$("transcribeButton").onclick=()=>{const entry=currentEntry();if(entry)processEntry(entry.id);};$("deleteEntryButton").onclick=deleteEntry;
     $("closeEditor").onclick=closeEditor;$("editorCancel").onclick=closeEditor;$("editorSave").onclick=submitEditor;$("editorModal").onclick=(e)=>{if(e.target===$("editorModal"))closeEditor();};
     $("choiceModal").onclick=(e)=>{if(e.target===$("choiceModal"))closeChoice();};
-    $("reflectButton").onclick=reflectEntry;
+    $("reflectButton").onclick=()=>{document.querySelector(".reflection-card").scrollIntoView({behavior:"smooth",block:"start"});reflectEntry();};
 
     $("privateSignOut").onclick=async()=>{if(state.recording){showToast("Save your recording first.");return;}try{const r=await fetch("/logout",{method:"POST"});if(!r.ok)throw Error("Sign-out failed");localStorage.removeItem("unscripted-access-code");sessionStorage.removeItem("unscripted-access-code");if("caches" in window)for(const name of await caches.keys())if(name.startsWith("unscripted-"))await caches.delete(name);location.reload();}catch(e){showToast(e.message);}};
     $("saveApiSettings").onclick=saveApiSettings;$("askForm").onsubmit=askDiary;document.querySelectorAll(".suggestion").forEach(b=>b.onclick=()=>{$("askInput").value=b.textContent;$("askInput").focus();});
