@@ -1,6 +1,7 @@
 name = "unscripted-private-ai"
 main = "worker.js"
 compatibility_date = "2026-10-12"
+compatibility_flags = ["nodejs_compat"]
 
 [vars]
 # Private diary uses same-origin requests. Leave legacy shared-origin access disabled.

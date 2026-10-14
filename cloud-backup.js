@@ -28,6 +28,11 @@
     }
     return response;
   }
+  async function upload(objectKey, bytes) {
+    const response=await request("/backup/put?key="+objectKey,bytes,true);
+    const ack=await response.json().catch(()=>null);
+    if(!ack || ack.saved!==true)throw new Error("Cloud storage did not acknowledge the upload.");
+  }
   async function snapshots() {
     const data = await (await request("/backup/list")).json();
     if (data.truncated) throw new Error("Too many cloud snapshots to list safely. Manage old device backups in Cloudflare.");
@@ -91,19 +96,22 @@
         const salted = new Uint8Array(activeSalt.length + data.length); salted.set(activeSalt); salted.set(data, activeSalt.length);
         const objectKey = "clips/" + hex(new Uint8Array(await crypto.subtle.digest("SHA-256", salted)));
         if (!uploaded.has(objectKey)) {
-          await request("/backup/put?key=" + objectKey, await C.encrypt(data, activeKey, activeSalt), true);
+          await upload(objectKey, await C.encrypt(data, activeKey, activeSalt));
           uploaded.set(objectKey, true);
         }
         audios.push({ id: clip.id, key: objectKey, type: blob.type, size: blob.size });
       }
-      const snapshot = { app: "unscripted-cloud", version: 1, createdAt: new Date().toISOString(), entries, audios, profile: localStorage.getItem("unscripted-reflection-profile") || "" };
+      const snapshot = { app: "unscripted-cloud", version: 1, createdAt: new Date().toISOString(), entries, audios, profile: localStorage.getItem("unscripted-reflection-profile") || "", profiles: D.profiles?.() || {} };
       const plain = new TextEncoder().encode(JSON.stringify(snapshot));
       if (plain.length > 8 * 1024 * 1024 - 48) throw new Error("Diary text exceeds the snapshot size limit. Export a local backup.");
       const objectKey = "snapshots/" + deviceId + "/" + Date.now() + "-" + hex(crypto.getRandomValues(new Uint8Array(8)));
-      await request("/backup/put?key=" + objectKey, await C.encrypt(plain, activeKey, activeSalt), true);
+      const encrypted=await C.encrypt(plain, activeKey, activeSalt);
+      await upload(objectKey,encrypted);
+      const readBack=await download(objectKey);
+      if(readBack.length!==encrypted.length || !readBack.every((value,index)=>value===encrypted[index]))throw new Error("Cloud read-back verification failed. No successful backup has been confirmed.");
       const when = new Date().toLocaleString();
       localStorage.setItem("unscripted-cloud-last", when);
-      status("Backed up " + when + ". Seven recent snapshots are kept for this device.");
+      status("Backup verified " + when + ". Stored in your private R2 bucket under diary/snapshots. Seven recent snapshots are kept for this device.");
     } catch (error) { dirty = true; status("Backup not completed: " + error.message + " Your local entries are still saved.", true); }
     finally {
       busy = false; $("cloudNow").disabled = false;
@@ -128,7 +136,7 @@
     if (busy || window.UnscriptedDiary.recording()) { status("Finish your recording or backup first."); return; }
     const chosen = $("cloudSnapshots").value;
     if (!chosen) return;
-    if (!confirm("Restore this cloud snapshot? Entries with matching IDs will be replaced; other local entries stay. Your current local diary will also be downloaded as a safety backup.")) return;
+    if (!await window.UnscriptedConfirm("Entries with matching IDs will be replaced; other local entries stay. Your current local diary will also be downloaded as a safety backup.",{title:"Restore this cloud backup?",confirmLabel:"Restore backup"})) return;
     restoring = true; clearTimeout(timer); $("cloudRestore").disabled = true;
     try {
       status("Downloading and decrypting your backup...");
@@ -148,6 +156,7 @@
       if (window.UnscriptedDiary.entries().length) if (!await window.UnscriptedDiary.exportBackup()) throw new Error("Could not export the local safety backup. Restore cancelled.");
       await window.UnscriptedDiary.restore(snapshot.entries, audioRows);
       if (typeof snapshot.profile === "string") localStorage.setItem("unscripted-reflection-profile", snapshot.profile.slice(0,4000));
+      window.UnscriptedDiary.restoreProfiles?.(snapshot.profiles);
       uploaded.clear(); dirty = false;
       status("Cloud backup restored. Your original local entries were exported before replacement.");
     } catch (error) { status("Restore failed: " + error.message, true); }

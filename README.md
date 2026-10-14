@@ -97,16 +97,37 @@ AI processing is separate from backup encryption: OpenAI receives readable audio
 
 ### Another perspective
 
+Settings now includes two AI-led six-question interviews: Get to know me and Reflection context. Each question adapts to previous answers; answers can be typed, recorded then transcribed, skipped or edited later. Voice answer audio is used for transcription and discarded; the editable text answer is what is saved. Quiz answers and generated context are included in local exports and encrypted cloud snapshots. An unfinished typed draft survives closing the quiz.
+
+Get to know me guides the tone of future summaries. Summaries address you directly as "you", with conversational warmth, while remaining faithful to the entry; profile background is not evidence that events happened in a recording. Existing automatic summaries can be refreshed from an entry's Transcribe & refresh summary button. Manually edited summaries remain protected.
+
+The recorder includes a top-right cancel button and a confirmation dialog. Discarding removes only the current recording part and its autosaved audio clips; other parts stay. A new entry with no remaining parts is removed. Cancellation waits for in-flight saving before final cleanup, and microphone tracks are stopped.
+
 Each tap asks one concise, specific reflection question grounded in the selected entry, selected diary excerpts and optional editable context. It may challenge assumptions, evidence, needs, another person's constraints or an evidenced recurring pattern. It should not automatically validate the user, defend another person, shame them or explain away abuse. Unknown motives stay conditional.
 
 The feature does not inherit ChatGPT memory, build a hidden clinical profile, diagnose or claim to read the full archive. Prior questions are passed in to reduce repeats; source links point to available diary entries. Questions and editable context are included in backups.
 
 ### Checks
 
+Passkey sign-in is available under Settings → Private sign-in. Sign in once with your diary access code, then choose Set up fingerprint / face sign-in. This registers a platform passkey with device verification required; the device may use biometrics or its PIN. Public keys and short-lived challenges live under the private R2 bucket's auth/ prefix. Registration requires an existing sign-in. Challenges are consumed with conditional R2 writes, and origin, RP ID, signature and verification flags are checked by SimpleWebAuthn. Changing the diary access secret invalidates registered passkeys; keep the access code as a fallback.
+
+Sessions use Secure, HttpOnly, SameSite=Lax cookies, with same-origin checks on state-changing requests. This supports launches from the home screen. An initial saved-session check avoids requesting the access code when a valid cookie already exists. Sessions refresh when the diary opens and expire after seven days of inactivity. Biometrics sign in to the diary; they do not replace the separate backup recovery password.
+
+Backup uploads now require a JSON acknowledgement and byte-for-byte read-back of the encrypted snapshot before reporting Backup verified. Cloudflare R2 objects appear under diary/clips and diary/snapshots; passkey records are under auth. Old successful status messages are not proof of a new backup.
+
+All application confirmations use themed asynchronous dialogs. Browser-owned microphone/passkey/navigation warnings remain platform controlled. Library rows show a compact single-line summary preview; open an entry for the full summary and topics.
+
+The passkey server/browser bundles are pinned to SimpleWebAuthn server 14.0.3 and browser 13.2.2. Dependency manifests, lockfile, entry sources and third-party notices are included under vendor/. The bundles are already checked in, so deployment needs no dependency install/build. Regenerate with the pinned esbuild dependency if updating them; preserve third-party notices. Static assets exclude api/ and vendor/.
+
 Run with Node 24 or equivalent Web Crypto support:
 
     node tests/security.mjs
     node tests/cloud-client.mjs
+    node tests/profile-quiz.mjs
+    node tests/quiz-client.cjs
+    node tests/recording.cjs
+    node tests/dialogs.cjs
+    node tests/passkeys.mjs
 
 These use fake R2/OpenAI responses and verify sign-in/origin restrictions, secret rotation, encryption and tampering, authenticated backup, snapshot retention, empty-device protection, automatic scheduling, restore and one-question validation. Live OpenAI/R2 and phone installation still need the owner's configured account.
 

@@ -22,8 +22,11 @@ r=await worker.fetch(new Request(origin+"/app.js"),env);assert.equal(r.status,40
 r=await worker.fetch(req("/session",{code:"wrong"}),env);assert.equal(r.status,401);
 r=await worker.fetch(req("/session",{code:secret},{Origin:"https://evil.test"}),env);assert.equal(r.status,403);
 r=await worker.fetch(req("/session",{code:secret}),env);
-const cookie=r.headers.get("Set-Cookie");assert.match(cookie,/Secure; HttpOnly; SameSite=Strict/);
+const cookie=r.headers.get("Set-Cookie");assert.match(cookie,/Secure; HttpOnly; SameSite=Lax/);
 const cookieHeader=cookie.split(";")[0];
+r=await worker.fetch(new Request(origin+"/session/status",{headers:{Cookie:cookieHeader}}),env);
+assert.equal((await r.json()).signedIn,true);assert.match(r.headers.get("Set-Cookie"),/Max-Age=604800/);
+r=await worker.fetch(new Request(origin+"/session/status"),env);assert.equal((await r.json()).signedIn,false);
 r=await worker.fetch(new Request(origin+"/",{headers:{Cookie:cookieHeader}}),env);
 assert.match(await r.text(),/unscripted-private-host/);
 r=await worker.fetch(req("/backup/list"),env);assert.equal(r.status,401);

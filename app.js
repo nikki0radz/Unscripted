@@ -166,6 +166,7 @@
   function supportedMime() { if (!window.MediaRecorder) return ""; return ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg;codecs=opus"].find((type) => MediaRecorder.isTypeSupported(type)) || ""; }
   async function startRecording(entryId) {
     if (state.recording) return;
+    if (window.UnscriptedQuiz?.recording()) {showToast("Finish your quiz voice answer first.");return;}
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder || !window.indexedDB) { showToast("This browser does not support recording. Use Chrome on HTTPS or localhost."); return; }
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false }); }
@@ -179,8 +180,8 @@
       state.recording = recording;
       $("recordTarget").textContent = entry.parts.length === 1 ? "A new entry" : "Adding to “" + entry.title + "”";
       $("recorderSheet").hidden = false;
-      updateRecorderUI(); startClip(recording);
-      recording.ticker = setInterval(() => updateRecorderUI(), 500);
+      $("recordTimer").textContent="00:00"; startClip(recording); updateRecorderUI();
+      if (!recording.closing) recording.ticker = setInterval(() => updateRecorderUI(), 500);
     } catch (error) {
       stream.getTracks().forEach((track) => track.stop());
       state.recording = null; $("recorderSheet").hidden = true;
@@ -198,6 +199,7 @@
     recorder.onerror = (event) => { handleRecordingError(rec, event.error || new Error("Recorder error")); };
     recorder.onstop = async () => {
       if (rec !== state.recording) return;
+      if (rec.cancelled) {await finishRecordingSession(rec);return;}
       clearTimeout(rec.rotation);
       const duration = Math.max(0, Date.now() - rec.clipStarted);
       rec.totalMs += duration;
@@ -231,7 +233,7 @@
   function handleRecordingError(rec, error) { console.error(error); showToast("Recording stopped: " + (error.message || "audio failure")); rec.closing = true; if (rec.recorder?.state === "recording") flushClip(rec); else finishRecordingSession(rec); }
   function updateRecorderUI() {
     const rec = state.recording; if (!rec) return;
-    const current = rec.saving || rec.paused || rec.closing ? 0 : Math.max(0, Date.now() - rec.clipStarted);
+    const current = !rec.clipStarted || rec.saving || rec.paused || rec.closing ? 0 : Math.max(0, Date.now() - rec.clipStarted);
     $("recordTimer").textContent = fmtDuration(rec.totalMs + current);
     $("recorderSheet").classList.toggle("paused", rec.paused || rec.saving);
     $("recordState").textContent = rec.saving ? "Saving this audio clip..." : rec.closing ? "Finishing and saving..." : rec.paused ? "Paused · tap Resume to keep going" : "Recording · your thoughts are being saved in short clips";
@@ -252,14 +254,69 @@
     else if (!rec.saving) finishRecordingSession(rec);
     updateRecorderUI();
   }
+  function requestCancelRecording() {
+    const rec=state.recording;if(!rec||rec.closing)return;
+    $("cancelRecordingModal").hidden=false;
+  }
+  function cancelRecording() {
+    const rec=state.recording;if(!rec||rec.closing)return;
+    $("cancelRecordingModal").hidden=true;
+    rec.cancelled=true;rec.closing=true;
+    clearTimeout(rec.rotation);clearInterval(rec.ticker);
+    if(rec.recorder?.state==="recording")rec.recorder.stop();
+    else if(!rec.saving)finishRecordingSession(rec);
+    rec.stream.getTracks().forEach(track=>track.stop());
+    updateRecorderUI();
+  }
   async function finishRecordingSession(rec) {
-    if (rec !== state.recording) return;
+    if (rec !== state.recording || rec.finishing) return;
+    rec.finishing=true;
     clearTimeout(rec.rotation); clearInterval(rec.ticker);
     rec.stream.getTracks().forEach((track) => track.stop());
+    if(rec.cancelled) {
+      try {
+        const entry=await transaction("entries","readonly",store=>store.get(rec.entryId));
+        if(entry){
+          const discarded=entry.parts.find(part=>part.id===rec.partId);
+          entry.parts=entry.parts.filter(part=>part.id!==rec.partId);
+          await new Promise((resolve,reject)=>{
+            const tx=state.db.transaction(["entries","audio"],"readwrite");
+            for(const clip of discarded?.clips||[])tx.objectStore("audio").delete(clip.id);
+            if(entry.parts.length){entry.updatedAt=new Date().toISOString();tx.objectStore("entries").put(entry);}
+            else tx.objectStore("entries").delete(entry.id);
+            tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error("Cancellation failed"));
+          });
+        }
+        $("recorderSheet").hidden=true;state.recording=null;await refreshEntries();
+        window.dispatchEvent(new Event("unscripted-change"));
+        if(state.entries.some(e=>e.id===rec.entryId))openEntry(rec.entryId);else switchView("home");
+        showToast("Recording discarded. Earlier entries are unchanged.");
+      } catch(error) {
+        $("recorderSheet").hidden=true;state.recording=null;await refreshEntries();switchView("home");
+        showToast("Could not discard recording: "+error.message+". Check the saved entry.");
+      }
+      return;
+    }
     $("recorderSheet").hidden = true; state.recording = null;
     await refreshEntries(); openEntry(rec.entryId);
     showToast("Recording saved to your diary ✦");
     if (activeAI()) processEntry(rec.entryId);
+  }
+  function profileData() {
+    const keys=["unscripted-personal-profile","unscripted-reflection-profile","unscripted-know-quiz","unscripted-reflection-quiz"];
+    return Object.fromEntries(keys.map(key=>[key,localStorage.getItem(key)||""]));
+  }
+  function restoreProfileData(profiles) {
+    if(!profiles||typeof profiles!=="object")return;
+    for(const key of Object.keys(profileData())){
+      const value=profiles[key];if(typeof value!=="string"||value.length>60000)continue;
+      if(key.endsWith("-quiz")){
+        let parsed;try{parsed=JSON.parse(value);}catch{continue;}
+        if(!Array.isArray(parsed.answers)||parsed.answers.length>6||parsed.answers.some(x=>typeof x.question!=="string"||typeof x.answer!=="string"))continue;
+      }
+      localStorage.setItem(key,value);
+    }
+    window.dispatchEvent(new Event("unscripted-settings"));
   }
   function getApiConfig() { return { url: (privateHost() ? location.origin : localStorage.getItem("unscripted-api-url") || "").replace(/\/+$/, ""), code: sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || "" }; }
   async function callAI(path, body, asForm = false) {
@@ -292,7 +349,7 @@
       }
       const content = sortedParts(entry).map((part) => ({ createdAt: part.createdAt, type: part.type, text: part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || "").join(" ") })).filter((p) => p.text?.trim());
       if (!content.length) throw new Error("There's no transcribed or written text to summarise yet.");
-      const data = await callAI("/organize", { content, existingTitle: entry.title, existingTags: entry.tags || [] });
+      const data = await callAI("/organize", { content, existingTitle: entry.title, existingTags: entry.tags || [], personalProfile: (localStorage.getItem("unscripted-personal-profile") || "").slice(0,4000) });
       if (typeof data.title === "string" && data.title.trim() && !entry.titleEdited) entry.title = data.title.trim().slice(0, 120);
       if (typeof data.summary === "string" && !entry.summaryEdited) entry.summary = data.summary.trim();
       if (Array.isArray(data.tags)) {
@@ -306,7 +363,7 @@
       if (entry) { entry.aiError = "AI processing paused: " + error.message + " Your original audio is still saved. Tap 'Transcribe' to retry."; await saveEntry(entry).catch(() => {}); }
     } finally { state.processing.delete(id); await refreshEntries().catch(() => {}); if (state.view === "entry" && state.selected === id) renderEntry(); else if (state.view === "home") renderHome(); }
   }
-  function renderSettings() { $("apiUrl").value = getApiConfig().url; $("apiUrl").readOnly = privateHost(); $("privateSignOut").hidden = !privateHost(); $("reflectionProfile").value = localStorage.getItem("unscripted-reflection-profile") || ""; window.dispatchEvent(new Event("unscripted-settings")); $("accessCode").value = sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || ""; $("rememberCode").checked = !!localStorage.getItem("unscripted-access-code"); $("accentSwatch").style.background = getComputedStyle(document.documentElement).getPropertyValue("--accent"); }
+  function renderSettings() { $("apiUrl").value = getApiConfig().url; $("apiUrl").readOnly = privateHost(); $("privateSignOut").hidden = !privateHost(); window.dispatchEvent(new Event("unscripted-settings")); $("accessCode").value = sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || ""; $("rememberCode").checked = !!localStorage.getItem("unscripted-access-code"); $("accentSwatch").style.background = getComputedStyle(document.documentElement).getPropertyValue("--accent"); }
   function saveApiSettings() { const url = $("apiUrl").value.trim().replace(/\/+$/, ""); if (url && (!url.startsWith("https://") || !URL.canParse(url))) { notice("settingsStatus", "Use a full HTTPS backend address.", true); return; } localStorage.setItem("unscripted-api-url", url); sessionStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); if ($("rememberCode").checked) localStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); else localStorage.removeItem("unscripted-access-code"); notice("settingsStatus", activeAI() ? "Connection saved for this browser tab. New recordings will be transcribed automatically when you save them." : "Saved. Add a backend address and access code to enable AI."); }
   function chooseAskSources(question) {
     const words = question.toLowerCase().split(/\W+/).filter((x) => x.length > 3);
@@ -375,7 +432,7 @@
       const history = sources.filter(x => x.id !== entry.id).slice(0,12).map(x => ({...x, text:x.text.slice(0,2500)}));
       const result = await callAI("/reflect", {
         entry: { id: entry.id, date: entry.createdAt, text: text.slice(0,24000) },
-        sources: history, profile: (localStorage.getItem("unscripted-reflection-profile") || "").slice(0,4000),
+        sources: history, profile: ("ABOUT ME: "+(localStorage.getItem("unscripted-personal-profile")||"").slice(0,2000)+"\nREFLECTION CONTEXT: "+(localStorage.getItem("unscripted-reflection-profile")||"").slice(0,2000)).slice(0,4100),
         previous: (entry.reflections || []).slice(-12).map(x => x.question),
         truncated: truncated || text.length > 24000 || sources.length > history.length + 1
       });
@@ -392,7 +449,7 @@
     } catch (error) { if (state.selected === entry.id) notice("reflectionStatus", error.message, true); }
     finally { reflecting.delete(entry.id); if (state.selected === entry.id && currentEntry()) renderReflection(currentEntry()); }
   }
-  async function deleteEntry() { const entry = currentEntry(); if (!entry || !confirm("Delete this entry and all its audio? This cannot be undone.")) return; try { for (const clip of allClips(entry)) await deleteAudio(clip.id); await transaction("entries", "readwrite", (s) => s.delete(entry.id)); await refreshEntries(); window.dispatchEvent(new Event("unscripted-change")); switchView("home"); showToast("Entry deleted. Older cloud backups may still contain this entry."); } catch (error) { showToast("Delete failed: " + error.message); } }
+  async function deleteEntry() { const entry = currentEntry(); if (!entry || !await window.UnscriptedConfirm("Delete this entry and all its audio? This cannot be undone. Older cloud backups may still contain it.",{title:"Delete this entry?",confirmLabel:"Delete entry",danger:true})) return; try { for (const clip of allClips(entry)) await deleteAudio(clip.id); await transaction("entries", "readwrite", (s) => s.delete(entry.id)); await refreshEntries(); window.dispatchEvent(new Event("unscripted-change")); switchView("home"); showToast("Entry deleted. Older cloud backups may still contain this entry."); } catch (error) { showToast("Delete failed: " + error.message); } }
   function blobToDataURL(blob) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob); }); }
   async function exportBackup() {
     const button = $("exportBackup"); button.disabled = true; button.textContent = "Preparing backup...";
@@ -401,7 +458,7 @@
       for (const entry of state.entries) for (const clip of allClips(entry)) {
         const blob = await getAudio(clip.id); if (blob) audios.push({ id: clip.id, content: await blobToDataURL(blob) });
       }
-      const data = { app: "unscripted", version: 1, profile: localStorage.getItem("unscripted-reflection-profile") || "", exportedAt: new Date().toISOString(), entries: state.entries, audios };
+      const data = { app: "unscripted", version: 1, profiles: profileData(), profile: localStorage.getItem("unscripted-reflection-profile") || "", exportedAt: new Date().toISOString(), entries: state.entries, audios };
       const file = new Blob([JSON.stringify(data)], { type: "application/json" });
       const link = document.createElement("a"); const url = URL.createObjectURL(file);
       link.href = url; link.download = "unscripted-backup-" + new Date().toISOString().slice(0, 10) + ".json"; document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
@@ -412,13 +469,13 @@
   function dataURLtoBlob(data) { const parts = data.match(/^data:([^;]+);base64,(.+)$/s); if (!parts) throw new Error("Invalid audio in backup"); const binary = atob(parts[2]); const bytes = new Uint8Array(binary.length); for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i); return new Blob([bytes], { type: parts[1] }); }
   async function importBackup(file) {
     if (!file) return;
-    if (!confirm("Import entries from this backup? Entries with matching IDs will be replaced. Existing other entries will stay.")) return;
+    if (!await window.UnscriptedConfirm("Entries with matching IDs will be replaced. Other entries will stay.",{title:"Import this backup?",confirmLabel:"Import backup"})) return;
     try {
       const data = JSON.parse(await file.text());
       if (data.app !== "unscripted" || data.version !== 1 || !Array.isArray(data.entries) || !Array.isArray(data.audios)) throw new Error("Not an Unscripted v1 backup.");
       for (const row of data.audios) if (typeof row.id === "string" && typeof row.content === "string") await saveAudio(row.id, dataURLtoBlob(row.content));
       for (const entry of data.entries) if (typeof entry.id === "string" && Array.isArray(entry.parts)) await saveEntry(entry);
-      if (typeof data.profile === "string") localStorage.setItem("unscripted-reflection-profile", data.profile.slice(0,4000));
+      if (typeof data.profile === "string") localStorage.setItem("unscripted-reflection-profile", data.profile.slice(0,4000)); restoreProfileData(data.profiles);
       await refreshEntries(); switchView("home"); showToast("Backup imported ✦");
     } catch (error) { showToast("Import failed: " + error.message); }
     $("backupInput").value = "";
@@ -437,6 +494,7 @@
   function bindEvents() {
     $("homeLogo").onclick=()=>switchView("home");$("navLibrary").onclick=()=>switchView("home");$("navAsk").onclick=()=>switchView("ask");$("settingsButton").onclick=()=>switchView("settings");$("settingsBack").onclick=()=>switchView("home");$("entryBack").onclick=()=>switchView("home");
     $("startNewButton").onclick=()=>startRecording(null);$("navRecord").onclick=()=>startRecording(null);$("continueLastButton").onclick=()=>{if(state.entries[0])startRecording(state.entries[0].id);};$("searchInput").oninput=renderHome;
+    $("cancelRecordingButton").onclick=requestCancelRecording;$("keepRecordingButton").onclick=()=>{$("cancelRecordingModal").hidden=true;};$("confirmCancelRecording").onclick=cancelRecording;
     $("pauseRecording").onclick=togglePause;$("finishRecording").onclick=stopRecording;
     $("addToEntryButton").onclick=openChoice;$("choiceClose").onclick=closeChoice;$("choiceRecord").onclick=()=>{const id=state.selected;closeChoice();startRecording(id);};$("choiceWrite").onclick=()=>{const id=state.selected;closeChoice();writeThought(id);};$("addNoteButton").onclick=()=>writeThought(state.selected);
     $("editTitleButton").onclick=()=>{const entry=currentEntry();if(entry)openEditor("Give it a title",entry.title,async value=>{entry.title=value||"Untitled thought";entry.titleEdited=true;await saveEntry(entry);await refreshEntries();renderEntry();});};
@@ -446,7 +504,7 @@
     $("closeEditor").onclick=closeEditor;$("editorCancel").onclick=closeEditor;$("editorSave").onclick=submitEditor;$("editorModal").onclick=(e)=>{if(e.target===$("editorModal"))closeEditor();};
     $("choiceModal").onclick=(e)=>{if(e.target===$("choiceModal"))closeChoice();};
     $("reflectButton").onclick=reflectEntry;
-    $("saveReflectionProfile").onclick=()=>{localStorage.setItem("unscripted-reflection-profile",$("reflectionProfile").value.slice(0,4000));window.dispatchEvent(new Event("unscripted-change"));showToast("Reflection context saved.");};
+
     $("privateSignOut").onclick=async()=>{if(state.recording){showToast("Save your recording first.");return;}try{const r=await fetch("/logout",{method:"POST"});if(!r.ok)throw Error("Sign-out failed");localStorage.removeItem("unscripted-access-code");sessionStorage.removeItem("unscripted-access-code");if("caches" in window)for(const name of await caches.keys())if(name.startsWith("unscripted-"))await caches.delete(name);location.reload();}catch(e){showToast(e.message);}};
     $("saveApiSettings").onclick=saveApiSettings;$("askForm").onsubmit=askDiary;document.querySelectorAll(".suggestion").forEach(b=>b.onclick=()=>{$("askInput").value=b.textContent;$("askInput").focus();});
     $("exportBackup").onclick=exportBackup;$("importBackup").onclick=()=>$("backupInput").click();$("backupInput").onchange=(e)=>importBackup(e.target.files[0]);
@@ -454,7 +512,7 @@
     $("brightness").oninput=()=>{accent.v=Number($("brightness").value)/100;updatePicker();};
     $("colourWheel").addEventListener("pointerdown",e=>{accent.pointer=e.pointerId;$("colourWheel").setPointerCapture(e.pointerId);chooseWheel(e);});$("colourWheel").addEventListener("pointermove",e=>{if(accent.pointer===e.pointerId)chooseWheel(e);});for(const event of ["pointerup","pointercancel"])$("colourWheel").addEventListener(event,e=>{if(accent.pointer===e.pointerId)accent.pointer=null;});
     window.addEventListener("resize",()=>{if(!$("colourModal").hidden)updatePicker();});
-    document.addEventListener("keydown",(e)=>{if(e.key==="Escape"){if(!$("colourModal").hidden)closePicker(false);else if(!$("editorModal").hidden)closeEditor();else if(!$("choiceModal").hidden)closeChoice();}});
+    document.addEventListener("keydown",(e)=>{if(e.key==="Escape"){if(!$("cancelRecordingModal").hidden){$("cancelRecordingModal").hidden=true;return;}if(!$("quizModal").hidden){$("quizClose").click();return;}if(!$("colourModal").hidden)closePicker(false);else if(!$("editorModal").hidden)closeEditor();else if(!$("choiceModal").hidden)closeChoice();}});
     window.addEventListener("beforeunload",(e)=>{if(state.recording){e.preventDefault();e.returnValue="";}});
     document.addEventListener("visibilitychange",()=>{if(document.hidden && state.recording && !state.recording.paused)flushClip(state.recording);});
   }
@@ -467,7 +525,7 @@
   }
   window.UnscriptedDiary = {
     config: getApiConfig, entries: () => state.entries, ready: () => !!state.db, recording: () => !!state.recording,
-    audio: getAudio, clips: allClips, exportBackup,
+    audio: getAudio, clips: allClips, exportBackup, callAI, activeAI, toast:showToast, profiles:profileData, restoreProfiles:restoreProfileData,
     freshEntries: () => transaction("entries", "readonly", s => s.getAll()),
     restore: (entries, audios) => new Promise((resolve,reject) => {
       const tx = state.db.transaction(["entries","audio"], "readwrite");

@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import {profileQuiz} from "../api/profile-quiz.js";
+let input;
+const generate=async(instructions,payload)=>{input=JSON.parse(payload);assert.match(instructions,/exactly ONE/);return JSON.stringify({question:"What would you like your diary to call you?"});};
+assert.equal((await profileQuiz({mode:"know",action:"question",answers:[]},generate)).question,"What would you like your diary to call you?");
+assert.equal(input.questionNumber,1);assert.match(input.topic,/preferred name/);
+await assert.rejects(()=>profileQuiz({mode:"nope",action:"question"},generate));
+await assert.rejects(()=>profileQuiz({mode:"know",action:"question",answers:Array(6).fill({question:"Q?",answer:"A"})},generate));
+await assert.rejects(()=>profileQuiz({mode:"know",action:"question"},async()=>JSON.stringify({question:"Name? And hobbies?"})));
+await assert.rejects(()=>profileQuiz({mode:"know",action:"question",answers:[{question:"What would you like your diary to call you?",answer:"Nicole"}]},generate));
+const result=await profileQuiz({mode:"reflection",action:"profile",answers:[{question:"What matters?",answer:"Honesty, with kindness."},{question:"Anything else?",answer:"",skipped:true}]},async(instructions,payload)=>{assert.match(instructions,/only information/);assert.match(instructions,/diagnoses/);assert.equal(JSON.parse(payload).answers[1].skipped,true);return JSON.stringify({profile:"You value honesty delivered with kindness."});});
+assert.match(result.profile,/honesty/);
+console.log("Passed: adaptive quiz topics, single-question validation, no repeats, six-question limit and grounded editable-context synthesis.");
