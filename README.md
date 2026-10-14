@@ -139,3 +139,6 @@ These use fake R2/OpenAI responses and verify sign-in/origin restrictions, secre
 ## Next improvements
 
 After testing on your own phone: optional email login, encrypted device-to-device sync, stronger search/indexing, background-native Android recorder, audio export to zip, richer source citations including timestamps, and editing auto-transcription mistakes.
+
+Recordings use one full-length seekable player per session; two-minute autosave clips remain internal. Existing recordings use the same player without converting or replacing their original audio.
+Validation: `node tests/recording-player.cjs` covers cross-clip seeking and playback continuation.

@@ -32,6 +32,7 @@
   function activeAI() { const { url, code } = getApiConfig(); return /^https:\/\//.test(url) && (!!code || privateHost()); }
   function switchView(view) {
     if (state.recording) { showToast("Save or pause your recording first."); return; }
+    if (view !== "entry") document.querySelectorAll?.(".recording-player").forEach(player => player.pause());
     state.view = view;
     for (const id of ["homeView", "entryView", "askView", "settingsView"]) $(id).hidden = id !== ({ home: "homeView", entry: "entryView", ask: "askView", settings: "settingsView" }[view]);
     $("navLibrary").classList.toggle("selected", view === "home" || view === "entry");
@@ -72,6 +73,7 @@
   function renderEntry() {
     const entry = currentEntry(); if (!entry) { switchView("home"); return; }
     renderReflection(entry);
+    document.querySelectorAll(".recording-player").forEach(player => player.dispose());
     revokeUrls();
     $("entryDate").textContent = fmtDate(entry.createdAt, true).toUpperCase();
     $("entryTitle").textContent = entry.title || "Untitled thought";
@@ -92,22 +94,10 @@
         const edit = make("button", "", "Edit note"); edit.type = "button"; edit.onclick = () => openEditor("Edit note", part.text || "", async (value) => { part.text = value; await saveEntry(entry); await refreshEntries(); renderEntry(); if (activeAI()) processEntry(entry.id); }); box.append(edit);
       } else {
         const segments = part.clips || [];
-        box.append(make("div", "tiny", `${audioTime(segments.reduce((t, c) => t + (c.duration || 0), 0))} · ${segments.length} saved audio clip${segments.length === 1 ? "" : "s"}`));
-        const audio = document.createElement("audio"); audio.controls = true; audio.preload = "none"; audio.setAttribute("aria-label", "Play recording " + (index + 1)); box.append(audio);
-        audioPlayers.push(audio);
-        let segmentIndex = 0; let audioSources = [];
-        audio.restartFromBeginning = () => { segmentIndex = 0; if (audioSources[0]) audio.src = audioSources[0]; };
-        Promise.all(segments.map((segment) => getAudio(segment.id))).then((blobs) => {
-          if (!audio.isConnected) return;
-          audioSources = blobs.map((blob) => blob ? URL.createObjectURL(blob) : null);
-          state.urls.push(...audioSources.filter(Boolean));
-          segmentIndex = 0;
-          if (audioSources[0]) audio.src = audioSources[0];
-          else box.append(make("p", "tiny", "Audio missing from this device. Try restoring a backup."));
-        }).catch(() => box.append(make("p", "tiny", "Could not load this recording.")));
-        audio.addEventListener("ended", () => { segmentIndex++; if (audioSources[segmentIndex]) { audio.src = audioSources[segmentIndex]; audio.play().catch(() => {}); } else audio.dispatchEvent(new Event("unscripted-session-ended")); });
+        const audio = window.UnscriptedRecordingPlayer.create(segments, getAudio, "recording " + (index + 1));
+        box.append(audio); audioPlayers.push(audio);
         const pending = segments.filter((s) => !s.transcript).length;
-        if (pending) box.append(make("div", "tiny", `${pending} clip${pending === 1 ? "" : "s"} awaiting transcription`));
+        if (pending) box.append(make("div", "tiny", "Awaiting transcription"));
       }
       container.append(box);
     });
@@ -127,7 +117,7 @@
         $("playAllButton").textContent = "▶ Play all";
       } else {
         playingAll = true;
-        audioPlayers.forEach(audio => { audio.pause(); audio.restartFromBeginning(); audio.currentTime = 0; });
+        audioPlayers.forEach(audio => { audio.pause(); audio.restartFromBeginning();  });
         audioPlayers[0].play().catch(() => { playingAll = false; $("playAllButton").textContent = "▶ Play all"; showToast("Audio is still loading. Try once more."); });
         $("playAllButton").textContent = "Ⅱ Stop playback";
       }
