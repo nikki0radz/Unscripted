@@ -92,6 +92,38 @@
     data.question="";save();$("quizAnswer").value="";
     if(data.answers.length>=6)await buildContext();else await nextQuestion();
   }
+
+  function startVoiceIndicator(recording) {
+    const indicator=$("quizRecordingIndicator"),timer=$("quizRecordingTimer");
+    indicator.hidden=false;timer.textContent="00:00";$("quizAudioCaptured").textContent="Listening...";
+    const started=Date.now();
+    recording.indicatorTimer=setInterval(()=>{
+      const seconds=Math.floor((Date.now()-started)/1000);
+      timer.textContent=String(Math.floor(seconds/60)).padStart(2,"0")+":"+String(seconds%60).padStart(2,"0");
+    },250);
+    try {
+      const AudioContext=window.AudioContext||window.webkitAudioContext;
+      if(!AudioContext)return;
+      const context=new AudioContext(),source=context.createMediaStreamSource(recording.stream),analyser=context.createAnalyser();
+      analyser.fftSize=64;source.connect(analyser);
+      recording.audioContext=context;context.resume().catch(()=>{});
+      const levels=new Uint8Array(analyser.frequencyBinCount),bars=$("quizVoiceMeter").querySelectorAll("i");
+      function draw(){
+        if(voice!==recording||recording.recorder.state!=="recording")return;
+        analyser.getByteFrequencyData(levels);
+        bars.forEach((bar,index)=>{const value=levels[Math.min(levels.length-1,index+2)]/255;bar.style.height=(4+value*28)+"px";});
+        recording.meterFrame=requestAnimationFrame(draw);
+      }
+      draw();
+    } catch (_) { /* Timer and captured-audio status remain available without Web Audio. */ }
+  }
+  function stopVoiceIndicator(recording) {
+    clearInterval(recording.indicatorTimer);
+    if(recording.meterFrame)cancelAnimationFrame(recording.meterFrame);
+    recording.audioContext?.close().catch(()=>{});
+    $("quizRecordingIndicator").hidden=true;
+  }
+
   async function recordVoice() {
     if(busy)return;
     if(voice){voice.recorder.stop();return;}
@@ -105,10 +137,10 @@
       const recorder=new MediaRecorder(stream,mime?{mimeType:mime,audioBitsPerSecond:48000}:{});
       const parts=[];let size=0;
       const recording={recorder,stream,timer:null,cancelled:false};voice=recording;
-      recorder.ondataavailable=e=>{if(e.data?.size){parts.push(e.data);size+=e.data.size;if(size>24*1024*1024&&recorder.state==="recording")recorder.stop();}};
-      recorder.onerror=()=>{recording.cancelled=true;tell("Voice recording failed. Please type or try again.",true);try{recorder.stop()}catch{};stream.getTracks().forEach(t=>t.stop());};
+      recorder.ondataavailable=e=>{if(e.data?.size){parts.push(e.data);size+=e.data.size;$("quizAudioCaptured").textContent="Audio captured";if(size>24*1024*1024&&recorder.state==="recording")recorder.stop();}};
+      recorder.onerror=()=>{stopVoiceIndicator(recording);recording.cancelled=true;tell("Voice recording failed. Please type or try again.",true);try{recorder.stop()}catch{};stream.getTracks().forEach(t=>t.stop());};
       recorder.onstop=async()=>{
-        clearTimeout(recording.timer);stream.getTracks().forEach(t=>t.stop());voice=null;busy=true;$("quizVoice").textContent="Record answer";buttons();
+        stopVoiceIndicator(recording);clearTimeout(recording.timer);stream.getTracks().forEach(t=>t.stop());voice=null;busy=true;$("quizVoice").textContent="Record answer";buttons();
         try {
           if(recording.cancelled)return;
           if(size>24*1024*1024)throw new Error("That answer is too large to transcribe. Try a shorter recording.");
@@ -123,9 +155,9 @@
         } catch(error){tell(error.message,true);}
         finally{busy=false;buttons();}
       };
-      recorder.start(1000);recording.timer=setTimeout(()=>{if(recorder.state==="recording")recorder.stop();},300000);
+      recorder.start(1000);startVoiceIndicator(recording);recording.timer=setTimeout(()=>{if(recorder.state==="recording")recorder.stop();},300000);
       $("quizVoice").textContent="Stop & transcribe";tell("Recording your answer. Tap Stop & transcribe when finished.");
-    } catch(error){stream?.getTracks().forEach(t=>t.stop());voice=null;tell("Could not record: "+error.message,true);}
+    } catch(error){if(voice)stopVoiceIndicator(voice);stream?.getTracks().forEach(t=>t.stop());voice=null;tell("Could not record: "+error.message,true);}
     finally{busy=false;buttons();}
   }
   $("quizNext").onclick=()=>advance(false);$("quizSkip").onclick=()=>advance(true);$("quizVoice").onclick=recordVoice;

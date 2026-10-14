@@ -3,7 +3,7 @@ const elements=new Map(),store=new Map(),events={};let stopTask,profileCalls=0;
 function el(){return{hidden:false,disabled:false,value:"",textContent:"",children:[],classList:{toggle(){}},append(...children){this.children.push(...children)},replaceChildren(){this.children=[]}};}
 function $(id){if(!elements.has(id))elements.set(id,el());return elements.get(id);}
 class Recorder{static isTypeSupported(){return true}constructor(){this.mimeType="audio/webm";this.state="inactive"}start(){this.state="recording"}stop(){this.state="inactive";this.ondataavailable({data:new Blob(["voice"],{type:"audio/webm"})});stopTask=this.onstop();}}
-const context={console,Blob,FormData,MediaRecorder:Recorder,setTimeout:()=>1,clearTimeout(){},confirm:()=>true,
+const context={console,Blob,FormData,MediaRecorder:Recorder,setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},confirm:()=>true,
 localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v)},document:{getElementById:$,createElement:el},Event,
 navigator:{mediaDevices:{getUserMedia:async()=>({getTracks:()=>[{stop(){}}]})}},
 window:{UnscriptedConfirm:async()=>true,MediaRecorder:Recorder,dispatchEvent(){},addEventListener:(name,fn)=>events[name]=fn,UnscriptedDiary:{recording:()=>false,activeAI:()=>true,toast(){},callAI:async(path,body)=>{
@@ -23,7 +23,8 @@ vm.runInNewContext(fs.readFileSync("profile-quiz.js","utf8"),context);
  $("quizClose").onclick();await $("reflectionQuiz").children[0].onclick();
  $("quizAnswer").value="Unfinished draft";$("quizClose").onclick();await $("reflectionQuiz").children[0].onclick();
  assert.equal($("quizAnswer").value,"Unfinished draft","partial typed answer survives closing");
- await $("quizVoice").onclick();await $("quizVoice").onclick();await stopTask;
+ await $("quizVoice").onclick();assert.equal($("quizRecordingIndicator").hidden,false);assert.equal($("quizRecordingTimer").textContent,"00:00");
+ await $("quizVoice").onclick();await stopTask;assert.equal($("quizRecordingIndicator").hidden,true);
  assert.match($("quizAnswer").value,/transcribed answer/);
  await $("quizNext").onclick();
  assert.match(JSON.parse(store.get("unscripted-reflection-quiz")).answers[0].answer,/transcribed/);

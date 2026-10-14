@@ -21,3 +21,13 @@
 .summary-text,.transcript-part p,.reflection-question{overflow-wrap:anywhere}
 .part-card{min-width:0;max-width:100%}
 .part-card audio{max-width:100%}
+
+.quiz-recording-indicator{margin:14px 0;padding:13px 15px;border:1px solid var(--line);background:var(--panel2);border-radius:14px}
+.quiz-recording-heading{display:flex;align-items:center;gap:9px;font-size:14px}
+.quiz-recording-heading time{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--accent)}
+.quiz-recording-dot{width:9px;height:9px;border-radius:50%;background:#ef7975;animation:quiz-record-pulse 1.3s ease-in-out infinite}
+.quiz-voice-meter{height:36px;display:flex;align-items:center;justify-content:center;gap:4px;margin:8px 0}
+.quiz-voice-meter i{display:block;width:5px;height:4px;border-radius:4px;background:var(--accent);transition:height .08s}
+.quiz-recording-indicator small{color:var(--muted);font-size:11px}
+@keyframes quiz-record-pulse{50%{opacity:.35;box-shadow:0 0 0 5px rgba(239,121,117,.1)}}
+@media(prefers-reduced-motion:reduce){.quiz-recording-dot{animation:none}.quiz-voice-meter i{transition:none}}
