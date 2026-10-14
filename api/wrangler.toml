@@ -2,8 +2,16 @@ name = "unscripted-private-ai"
 main = "worker.js"
 compatibility_date = "2026-10-12"
 
-# Temporary test origin for the existing GitHub Pages app.
-# Change this to a dedicated private diary domain before using sensitive recordings.
-# Cloudflare CORS requires an origin without a path or trailing slash.
 [vars]
-ALLOWED_ORIGIN = "https://nikki0radz.github.io"
+# Private diary uses same-origin requests. Leave legacy shared-origin access disabled.
+ALLOWED_ORIGIN = ""
+
+[assets]
+directory = "../"
+binding = "ASSETS"
+run_worker_first = true
+
+# After creating a PRIVATE R2 bucket, uncomment this binding and deploy again.
+# [[r2_buckets]]
+# binding = "DIARY_BACKUPS"
+# bucket_name = "unscripted-backups"

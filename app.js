@@ -17,7 +17,7 @@
   function notice(id, text, error = false) { const el = $(id); el.hidden = !text; el.textContent = text || ""; el.classList.toggle("error", !!error); }
   function getDb() { return new Promise((resolve, reject) => { const req = indexedDB.open(DB_NAME, DB_VERSION); req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains("entries")) db.createObjectStore("entries", { keyPath: "id" }); if (!db.objectStoreNames.contains("audio")) db.createObjectStore("audio", { keyPath: "id" }); }; req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); }); }
   function transaction(storeName, mode, operation) { return new Promise((resolve, reject) => { const tx = state.db.transaction(storeName, mode); const req = operation(tx.objectStore(storeName)); tx.oncomplete = () => resolve(req?.result); tx.onerror = () => reject(tx.error || req?.error); tx.onabort = () => reject(tx.error || new Error("Storage transaction aborted")); }); }
-  const saveEntry = async (entry) => { entry.updatedAt = new Date().toISOString(); await transaction("entries", "readwrite", (s) => s.put(entry)); };
+  const saveEntry = async (entry) => { entry.updatedAt = new Date().toISOString(); await transaction("entries", "readwrite", (s) => s.put(entry)); window.dispatchEvent(new Event("unscripted-change")); };
   const getAudio = (id) => transaction("audio", "readonly", (s) => s.get(id)).then((row) => row?.blob);
   const saveAudio = (id, blob) => transaction("audio", "readwrite", (s) => s.put({ id, blob }));
   const deleteAudio = (id) => transaction("audio", "readwrite", (s) => s.delete(id));
@@ -28,7 +28,8 @@
   const totalTime = (entry) => allClips(entry).reduce((sum, clip) => sum + (clip.duration || 0), 0);
   const transcriptText = (entry) => allParts(entry).map((part) => part.type === "note" ? (part.text || "") : (part.clips || []).map((c) => c.transcript || "").join(" ")).join("\n");
   const sortedParts = (entry) => allParts(entry).slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  function activeAI() { const url = localStorage.getItem("unscripted-api-url") || ""; const code = (sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || ""); return /^https:\/\//.test(url) && !!code; }
+  function privateHost() { return !!document.querySelector('meta[name="unscripted-private-host"]'); }
+  function activeAI() { const { url, code } = getApiConfig(); return /^https:\/\//.test(url) && (!!code || privateHost()); }
   function switchView(view) {
     if (state.recording) { showToast("Save or pause your recording first."); return; }
     state.view = view;
@@ -69,6 +70,7 @@
   function openEntry(id) { state.selected = id; state.openTranscript = false; $("transcriptArea").hidden = true; $("transcriptToggle").setAttribute("aria-expanded", "false"); switchView("entry"); }
   function renderEntry() {
     const entry = currentEntry(); if (!entry) { switchView("home"); return; }
+    renderReflection(entry);
     revokeUrls();
     $("entryDate").textContent = fmtDate(entry.createdAt, true).toUpperCase();
     $("entryTitle").textContent = entry.title || "Untitled thought";
@@ -259,10 +261,10 @@
     showToast("Recording saved to your diary ✦");
     if (activeAI()) processEntry(rec.entryId);
   }
-  function getApiConfig() { return { url: (localStorage.getItem("unscripted-api-url") || "").replace(/\/+$/, ""), code: sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || "" }; }
+  function getApiConfig() { return { url: (privateHost() ? location.origin : localStorage.getItem("unscripted-api-url") || "").replace(/\/+$/, ""), code: sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || "" }; }
   async function callAI(path, body, asForm = false) {
-    const { url, code } = getApiConfig(); if (!/^https:\/\//.test(url) || !code) throw new Error("Connect your private AI backend in Settings first.");
-    const response = await fetch(url + path, { method: "POST", headers: { Authorization: "Bearer " + code, ...(asForm ? {} : { "Content-Type": "application/json" }) }, body: asForm ? body : JSON.stringify(body) });
+    const { url, code } = getApiConfig(); if (!/^https:\/\//.test(url) || (!code && !privateHost())) throw new Error("Connect your private AI backend in Settings first.");
+    const response = await fetch(url + path, { method: "POST", credentials: "same-origin", headers: { ...(code ? { Authorization: "Bearer " + code } : {}), ...(asForm ? {} : { "Content-Type": "application/json" }) }, body: asForm ? body : JSON.stringify(body) });
     const raw = await response.text(); let result; try { result = JSON.parse(raw); } catch (_) { throw new Error("AI server returned a non-JSON response."); }
     if (!response.ok || result.error) throw new Error(result.error || "AI request failed (" + response.status + ")");
     return result;
@@ -304,7 +306,7 @@
       if (entry) { entry.aiError = "AI processing paused: " + error.message + " Your original audio is still saved. Tap 'Transcribe' to retry."; await saveEntry(entry).catch(() => {}); }
     } finally { state.processing.delete(id); await refreshEntries().catch(() => {}); if (state.view === "entry" && state.selected === id) renderEntry(); else if (state.view === "home") renderHome(); }
   }
-  function renderSettings() { $("apiUrl").value = localStorage.getItem("unscripted-api-url") || ""; $("accessCode").value = sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || ""; $("rememberCode").checked = !!localStorage.getItem("unscripted-access-code"); $("accentSwatch").style.background = getComputedStyle(document.documentElement).getPropertyValue("--accent"); }
+  function renderSettings() { $("apiUrl").value = getApiConfig().url; $("apiUrl").readOnly = privateHost(); $("privateSignOut").hidden = !privateHost(); $("reflectionProfile").value = localStorage.getItem("unscripted-reflection-profile") || ""; window.dispatchEvent(new Event("unscripted-settings")); $("accessCode").value = sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || ""; $("rememberCode").checked = !!localStorage.getItem("unscripted-access-code"); $("accentSwatch").style.background = getComputedStyle(document.documentElement).getPropertyValue("--accent"); }
   function saveApiSettings() { const url = $("apiUrl").value.trim().replace(/\/+$/, ""); if (url && (!url.startsWith("https://") || !URL.canParse(url))) { notice("settingsStatus", "Use a full HTTPS backend address.", true); return; } localStorage.setItem("unscripted-api-url", url); sessionStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); if ($("rememberCode").checked) localStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); else localStorage.removeItem("unscripted-access-code"); notice("settingsStatus", activeAI() ? "Connection saved for this browser tab. New recordings will be transcribed automatically when you save them." : "Saved. Add a backend address and access code to enable AI."); }
   function chooseAskSources(question) {
     const words = question.toLowerCase().split(/\W+/).filter((x) => x.length > 3);
@@ -347,7 +349,50 @@
     } catch (error) { notice("askStatus", "Could not analyse diary: " + error.message, true); }
     finally { $("askSubmit").disabled = false; }
   }
-  async function deleteEntry() { const entry = currentEntry(); if (!entry || !confirm("Delete this entry and all its audio? This cannot be undone.")) return; try { for (const clip of allClips(entry)) await deleteAudio(clip.id); await transaction("entries", "readwrite", (s) => s.delete(entry.id)); await refreshEntries(); switchView("home"); showToast("Entry deleted"); } catch (error) { showToast("Delete failed: " + error.message); } }
+  const reflecting = new Set();
+  function renderReflection(entry) {
+    const last = (entry.reflections || []).at(-1);
+    $("reflectionQuestion").textContent = last?.question || "";
+    $("reflectionQuestion").hidden = !last;
+    $("reflectButton").disabled = reflecting.has(entry.id);
+    $("reflectButton").textContent = reflecting.has(entry.id) ? "Thinking..." : last ? "↗ Ask me another question" : "↗ Ask me one question";
+    const target = $("reflectionSources"); target.replaceChildren();
+    for (const id of last?.sourceIds || []) {
+      const source = state.entries.find(e => e.id === id); if (!source) continue;
+      const button = make("button", "source-link", fmtDate(source.createdAt) + " · " + source.title);
+      button.type = "button"; button.onclick = () => openEntry(id); target.append(button);
+    }
+  }
+  async function reflectEntry() {
+    const entry = currentEntry(); if (!entry || reflecting.has(entry.id)) return;
+    notice("reflectionStatus", "");
+    if (!activeAI()) { notice("reflectionStatus", "Connect AI in Settings first.", true); return; }
+    const text = transcriptText(entry).trim();
+    if (!text) { notice("reflectionStatus", "Transcribe this recording first, or add a written thought.", true); return; }
+    reflecting.add(entry.id); renderReflection(entry);
+    try {
+      const { sources, truncated } = chooseAskSources(entry.title + " " + (entry.tags || []).join(" ") + " " + text.slice(-2500));
+      const history = sources.filter(x => x.id !== entry.id).slice(0,12).map(x => ({...x, text:x.text.slice(0,2500)}));
+      const result = await callAI("/reflect", {
+        entry: { id: entry.id, date: entry.createdAt, text: text.slice(0,24000) },
+        sources: history, profile: (localStorage.getItem("unscripted-reflection-profile") || "").slice(0,4000),
+        previous: (entry.reflections || []).slice(-12).map(x => x.question),
+        truncated: truncated || text.length > 24000 || sources.length > history.length + 1
+      });
+      if (typeof result.question !== "string" || !result.question.trim()) throw new Error("No reflection question returned.");
+      // Retrieve the freshest row so edits made during the request are preserved.
+      const fresh = await transaction("entries", "readonly", s => s.get(entry.id));
+      if (!fresh) return;
+      fresh.reflections = [...(fresh.reflections || []), {question: result.question, sourceIds: result.sourceIds || [], createdAt: new Date().toISOString()}].slice(-50);
+      await saveEntry(fresh); await refreshEntries();
+      if (state.selected === entry.id) {
+        renderReflection(currentEntry());
+        notice("reflectionStatus", "Based on this entry, your saved context and selected diary excerpts. History may be incomplete.");
+      }
+    } catch (error) { if (state.selected === entry.id) notice("reflectionStatus", error.message, true); }
+    finally { reflecting.delete(entry.id); if (state.selected === entry.id && currentEntry()) renderReflection(currentEntry()); }
+  }
+  async function deleteEntry() { const entry = currentEntry(); if (!entry || !confirm("Delete this entry and all its audio? This cannot be undone.")) return; try { for (const clip of allClips(entry)) await deleteAudio(clip.id); await transaction("entries", "readwrite", (s) => s.delete(entry.id)); await refreshEntries(); window.dispatchEvent(new Event("unscripted-change")); switchView("home"); showToast("Entry deleted. Older cloud backups may still contain this entry."); } catch (error) { showToast("Delete failed: " + error.message); } }
   function blobToDataURL(blob) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob); }); }
   async function exportBackup() {
     const button = $("exportBackup"); button.disabled = true; button.textContent = "Preparing backup...";
@@ -356,12 +401,12 @@
       for (const entry of state.entries) for (const clip of allClips(entry)) {
         const blob = await getAudio(clip.id); if (blob) audios.push({ id: clip.id, content: await blobToDataURL(blob) });
       }
-      const data = { app: "unscripted", version: 1, exportedAt: new Date().toISOString(), entries: state.entries, audios };
+      const data = { app: "unscripted", version: 1, profile: localStorage.getItem("unscripted-reflection-profile") || "", exportedAt: new Date().toISOString(), entries: state.entries, audios };
       const file = new Blob([JSON.stringify(data)], { type: "application/json" });
       const link = document.createElement("a"); const url = URL.createObjectURL(file);
       link.href = url; link.download = "unscripted-backup-" + new Date().toISOString().slice(0, 10) + ".json"; document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
-      showToast("Backup ready. Keep it somewhere private.");
-    } catch (error) { showToast("Could not export backup: " + error.message); }
+      showToast("Backup ready. Keep it somewhere private."); return true;
+    } catch (error) { showToast("Could not export backup: " + error.message); return false; }
     finally { button.disabled = false; button.textContent = "↓ Export backup"; }
   }
   function dataURLtoBlob(data) { const parts = data.match(/^data:([^;]+);base64,(.+)$/s); if (!parts) throw new Error("Invalid audio in backup"); const binary = atob(parts[2]); const bytes = new Uint8Array(binary.length); for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i); return new Blob([bytes], { type: parts[1] }); }
@@ -373,6 +418,7 @@
       if (data.app !== "unscripted" || data.version !== 1 || !Array.isArray(data.entries) || !Array.isArray(data.audios)) throw new Error("Not an Unscripted v1 backup.");
       for (const row of data.audios) if (typeof row.id === "string" && typeof row.content === "string") await saveAudio(row.id, dataURLtoBlob(row.content));
       for (const entry of data.entries) if (typeof entry.id === "string" && Array.isArray(entry.parts)) await saveEntry(entry);
+      if (typeof data.profile === "string") localStorage.setItem("unscripted-reflection-profile", data.profile.slice(0,4000));
       await refreshEntries(); switchView("home"); showToast("Backup imported ✦");
     } catch (error) { showToast("Import failed: " + error.message); }
     $("backupInput").value = "";
@@ -399,6 +445,9 @@
     $("transcriptToggle").onclick=()=>{state.openTranscript=!state.openTranscript;renderEntry();};$("transcribeButton").onclick=()=>{const entry=currentEntry();if(entry)processEntry(entry.id);};$("deleteEntryButton").onclick=deleteEntry;
     $("closeEditor").onclick=closeEditor;$("editorCancel").onclick=closeEditor;$("editorSave").onclick=submitEditor;$("editorModal").onclick=(e)=>{if(e.target===$("editorModal"))closeEditor();};
     $("choiceModal").onclick=(e)=>{if(e.target===$("choiceModal"))closeChoice();};
+    $("reflectButton").onclick=reflectEntry;
+    $("saveReflectionProfile").onclick=()=>{localStorage.setItem("unscripted-reflection-profile",$("reflectionProfile").value.slice(0,4000));window.dispatchEvent(new Event("unscripted-change"));showToast("Reflection context saved.");};
+    $("privateSignOut").onclick=async()=>{if(state.recording){showToast("Save your recording first.");return;}try{const r=await fetch("/logout",{method:"POST"});if(!r.ok)throw Error("Sign-out failed");localStorage.removeItem("unscripted-access-code");sessionStorage.removeItem("unscripted-access-code");if("caches" in window)for(const name of await caches.keys())if(name.startsWith("unscripted-"))await caches.delete(name);location.reload();}catch(e){showToast(e.message);}};
     $("saveApiSettings").onclick=saveApiSettings;$("askForm").onsubmit=askDiary;document.querySelectorAll(".suggestion").forEach(b=>b.onclick=()=>{$("askInput").value=b.textContent;$("askInput").focus();});
     $("exportBackup").onclick=exportBackup;$("importBackup").onclick=()=>$("backupInput").click();$("backupInput").onchange=(e)=>importBackup(e.target.files[0]);
     $("accentPickerButton").onclick=openPicker;$("colourClose").onclick=()=>closePicker(false);$("doneAccent").onclick=()=>closePicker(true);$("resetAccent").onclick=()=>setPicker("#b8d2ab");$("colourModal").onclick=(e)=>{if(e.target===$("colourModal"))closePicker(false);};
@@ -416,5 +465,17 @@
     if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register("./service-worker.js").catch(()=>{});
     if("storage" in navigator && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
   }
+  window.UnscriptedDiary = {
+    config: getApiConfig, entries: () => state.entries, ready: () => !!state.db, recording: () => !!state.recording,
+    audio: getAudio, clips: allClips, exportBackup,
+    freshEntries: () => transaction("entries", "readonly", s => s.getAll()),
+    restore: (entries, audios) => new Promise((resolve,reject) => {
+      const tx = state.db.transaction(["entries","audio"], "readwrite");
+      for (const row of audios) tx.objectStore("audio").put(row);
+      for (const entry of entries) tx.objectStore("entries").put(entry);
+      tx.oncomplete = async () => {await refreshEntries();switchView("home");resolve();};
+      tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error || new Error("Restore aborted"));
+    })
+  };
   init();
 })();

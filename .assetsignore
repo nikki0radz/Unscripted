@@ -1,0 +1,8 @@
+api/
+tests/
+*.py
+*.cjs
+README.md
+.git/
+.gitignore
+.assetsignore

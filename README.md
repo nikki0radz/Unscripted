@@ -51,7 +51,7 @@ The included `api/worker.js` supports `/transcribe`, `/organize`, and `/ask`, an
 Cloudflare secret configuration: <https://developers.cloudflare.com/workers/configuration/secrets/>  
 OpenAI transcription reference: <https://platform.openai.com/docs/api-reference/audio/createTranscription>
 
-The APIs are charged separately from any ChatGPT subscription. These requests transmit the audio (for transcription) and excerpts of transcripts (for analysis) to the AI provider. The Worker doesn't store your audio or transcript. AI analysis is restricted to the supplied transcripts; if your archive grows very large, some entries/excerpts may not be included in a given question. The app flags partial-history responses.
+The APIs are charged separately from any ChatGPT subscription. These requests transmit the audio (for transcription) and excerpts of transcripts (for analysis) to the AI provider. AI routes do not store your audio or transcript; enabled R2 backups store only encrypted copies. AI analysis is restricted to the supplied transcripts; if your archive grows very large, some entries/excerpts may not be included in a given question. The app flags partial-history responses.
 
 ## Storage limitations
 
@@ -60,8 +60,56 @@ The APIs are charged separately from any ChatGPT subscription. These requests tr
 - Large backups can consume substantial memory and storage, and exports currently use JSON including base64-encoded audio (bigger than original files). On very large archives, export regularly and consider a proper archive/export format in a later version.
 - A recording is split into clips not for a user-visible time limit, but to save progressively and make each upload small enough for a transcription endpoint. You can make as many recordings per entry as you want, subject to device storage.
 - "Ask diary" does not use a full semantic vector index yet. It chooses source entries by text matching plus time coverage, and some material may be omitted. Search inside the library currently uses literal substring matching. Full semantic retrieval would be an appropriate future upgrade.
-- A unique login, encrypted cloud sync, speaker diarisation, reliable locked-screen Android recording and unlimited-size exports are **not included** in this first build.
+- Access-code sign-in and encrypted cloud backup are available at the dedicated Worker origin. Email login, live cloud sync, speaker diarisation, reliable locked-screen Android recording and unlimited-size exports are **not included**.
+
+## Private diary and encrypted automatic backups
+
+The Worker now also hosts the diary frontend at its root workers.dev URL. It checks private access-code sign-in before serving the app. App icons and installation metadata are public and contain no diary data. Sign-in uses DIARY_ACCESS_TOKEN to establish a Secure, HttpOnly, SameSite cookie for seven days. Rotating the secret invalidates sessions.
+
+If you already have recordings on GitHub Pages, export them there first, then import at the private Worker address. Different website origins do not share browser storage. Install the diary from the private Worker address; AI then uses the same-origin signed-in session automatically.
+
+### Cloudflare setup
+
+1. Create a PRIVATE R2 bucket named unscripted-backups. Keep public access, r2.dev and public custom domains disabled. The account owner must handle any Cloudflare billing/terms setup.
+2. Uncomment the R2 binding block at the bottom of api/wrangler.toml and redeploy. Binding must be DIARY_BACKUPS and bucket name must match. Keep that binding in configuration so later deployments preserve it.
+3. In the private diary's Settings, enable automatic cloud backups and enter a separate recovery password of at least 16 characters (ideally several random words). Save it in your password manager.
+4. Unlock backups, tap Back up now, and verify a successful timestamp. Test backup and restore with a short disposable recording before relying on it.
+
+Until the bucket is bound, cloud controls show a setup error; recording and AI still work. Unlock backups each time the app reopens. The recovery password and encryption key stay in memory only. Automatic uploads run after changes while the app is open and unlocked; Android can suspend or close it, so this is not guaranteed background backup.
+
+### Encryption and recovery
+
+Audio and diary metadata are encrypted on the device with AES-256-GCM. The 256-bit key is derived by PBKDF2-SHA-256 (600,000 iterations, random 128-bit salt); each object gets a fresh random 96-bit IV. Wrong passwords or tampering fail integrity checks. Recovery passwords are never uploaded to Cloudflare or OpenAI.
+
+All cloud operations require authentication. CORS alone is not access control. Seven recent complete snapshots per device are retained; referenced audio is uploaded before publishing the snapshot. New empty devices never upload an empty diary over old data. This is backup/restore, not live sync or conflict resolution.
+
+Restore validates and decrypts all audio before an atomic IndexedDB update. Matching entry IDs are replaced; other local entries remain. An unencrypted local safety export is downloaded first when the device has entries. Limits: audio clips 24 MB, snapshot metadata under 8 MB, restore up to 250 MB of decrypted audio. Larger archives need a future streaming restore.
+
+Deleting an entry locally does not erase existing cloud snapshots or orphaned encrypted audio. Manage permanent cloud removal in Cloudflare. Losing the recovery password makes cloud backups unrecoverable. Changing the diary access code does not change backup encryption.
+
+### What the link exposes
+
+Someone with only the diary URL cannot retrieve your diary or backups. Someone with the access code or a signed-in browser can access the backend; they also need the separate recovery password to decrypt backups. Cloudflare account administrators can manage encrypted objects and see storage size/timing, but the app does not upload the recovery password.
+
+Local recordings still live unencrypted in the browser's IndexedDB. Sign-out removes the login session and diary caches, not local recordings. It is not protection against somebody controlling your device or its developer tools. Use a trusted locked phone. Cloud backup unlock is intentionally limited to the dedicated Worker origin, because GitHub Pages project apps share an origin.
+
+AI processing is separate from backup encryption: OpenAI receives readable audio/transcript excerpts when you request AI processing. Responses requests use store:false, which is not a claim of zero provider retention. See [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data).
+
+### Another perspective
+
+Each tap asks one concise, specific reflection question grounded in the selected entry, selected diary excerpts and optional editable context. It may challenge assumptions, evidence, needs, another person's constraints or an evidenced recurring pattern. It should not automatically validate the user, defend another person, shame them or explain away abuse. Unknown motives stay conditional.
+
+The feature does not inherit ChatGPT memory, build a hidden clinical profile, diagnose or claim to read the full archive. Prior questions are passed in to reduce repeats; source links point to available diary entries. Questions and editable context are included in backups.
+
+### Checks
+
+Run with Node 24 or equivalent Web Crypto support:
+
+    node tests/security.mjs
+    node tests/cloud-client.mjs
+
+These use fake R2/OpenAI responses and verify sign-in/origin restrictions, secret rotation, encryption and tampering, authenticated backup, snapshot retention, empty-device protection, automatic scheduling, restore and one-question validation. Live OpenAI/R2 and phone installation still need the owner's configured account.
 
 ## Next improvements
 
-After testing on your own phone: dedicated deployment and private login, encrypted device-to-device sync, stronger search/indexing, background-native Android recorder, audio export to zip, richer source citations including timestamps, and editing auto-transcription mistakes.
+After testing on your own phone: optional email login, encrypted device-to-device sync, stronger search/indexing, background-native Android recorder, audio export to zip, richer source citations including timestamps, and editing auto-transcription mistakes.
