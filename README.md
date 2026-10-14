@@ -97,6 +97,10 @@ AI processing is separate from backup encryption: OpenAI receives readable audio
 
 ### Another perspective
 
+The home screen now includes Interview me: choose a mixed interview, confidence, relationships, big questions/moral dilemmas, revisiting history or your own goal. AI asks six adaptive questions, one at a time, using selected dated diary excerpts and saved self-description. Questions can be skipped; you can resume or finish early. An interview with at least one answer saves progressively as an entry marked Interview. Typed or transcribed answer text is saved; temporary voice-answer audio is not retained. History references link to actual supplied source entries. A complete interview receives the usual personalised summary. An all-skipped interview creates no empty diary entry.
+
+Interview drafts are included in backup profile metadata, and saved interviews use the normal entry/audio backup system. The AI is explicitly told that hypothetical dilemmas and skipped prompts are not evidence of real events or beliefs. Interviews are reflective prompts, not assessments or guaranteed confidence treatment.
+
 Settings now includes two AI-led six-question interviews: Get to know me and Reflection context. Each question adapts to previous answers; answers can be typed, recorded then transcribed, skipped or edited later. Voice answer audio is used for transcription and discarded; the editable text answer is what is saved. Quiz answers and generated context are included in local exports and encrypted cloud snapshots. An unfinished typed draft survives closing the quiz.
 
 Get to know me guides the tone of future summaries. Summaries address you directly as "you", with conversational warmth, while remaining faithful to the entry; profile background is not evidence that events happened in a recording. Existing automatic summaries can be refreshed from an entry's Transcribe & refresh summary button. Manually edited summaries remain protected.
@@ -128,6 +132,7 @@ Run with Node 24 or equivalent Web Crypto support:
     node tests/recording.cjs
     node tests/dialogs.cjs
     node tests/passkeys.mjs
+    node tests/interview.mjs
 
 These use fake R2/OpenAI responses and verify sign-in/origin restrictions, secret rotation, encryption and tampering, authenticated backup, snapshot retention, empty-device protection, automatic scheduling, restore and one-question validation. Live OpenAI/R2 and phone installation still need the owner's configured account.
 

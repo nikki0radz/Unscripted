@@ -9,7 +9,7 @@ document:{getElementById:element},navigator:{mediaDevices:{getUserMedia:async()=
 localStorage:{getItem:()=>null},sessionStorage:{getItem:()=>null},
 window:{MediaRecorder:Recorder,indexedDB:{},dispatchEvent(){}}};
 let source=fs.readFileSync("app.js","utf8");
-source=source.replace("  init();", '  state.db = globalThis.fixtureDb; showToast=message=>{globalThis.lastToast=message};openEntry=id=>{state.selected=id};switchView=view=>{state.view=view};activeAI=()=>false;globalThis.testRecording={state,startRecording,startClip,flushClip,cancelRecording,updateRecorderUI};');
+source=source.replace("  init();", '  state.db = globalThis.fixtureDb; showToast=message=>{globalThis.lastToast=message};openEntry=id=>{state.selected=id};switchView=view=>{state.view=view};activeAI=()=>false;globalThis.testRecording={state,startRecording,startClip,flushClip,cancelRecording,updateRecorderUI,saveInterview};');
 context.fixtureDb=db;
 vm.runInNewContext(source,context);
 const T=context.testRecording;
@@ -35,5 +35,10 @@ const T=context.testRecording;
  await T.startRecording("entry");const race=T.state.recording;T.flushClip(race);
  T.cancelRecording();await stopTask;
  assert.equal(audios.size,1);assert.equal(entries.get("entry").parts.length,1);
+ T.state.view="settings";
+ const answers=[{id:"q1",createdAt:new Date().toISOString(),question:"What matters?",answer:"Being fair",skipped:false,sourceIds:["entry"]},{id:"q2",question:"What next?",answer:"",skipped:true}];
+ const interviewId=await T.saveInterview({goal:"Confidence",answers,complete:false},null);assert.equal(entries.get(interviewId).kind,"interview");assert.match(entries.get(interviewId).parts[0].text,/Being fair/);assert(entries.get(interviewId).parts[1].text.includes("Skipped"));
+ await T.saveInterview({goal:"Confidence",answers:[{...answers[0],answer:"Being honest"}],complete:true},interviewId);assert.equal(entries.get(interviewId).interview.complete,true);assert.equal(entries.get(interviewId).parts.length,1);assert.match(entries.get(interviewId).parts[0].text,/Being honest/);
+ assert.equal(await T.saveInterview({goal:"Random",answers:[{question:"Q?",answer:"",skipped:true}],complete:false},null),null);
  console.log("Passed: initial timer, cancelling new/continued recordings, autosaved clip deletion and cancellation during an in-flight save.");
 })().catch(e=>{console.error(e);process.exit(1)});

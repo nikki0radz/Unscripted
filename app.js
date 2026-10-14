@@ -62,6 +62,7 @@
     for (const entry of selected) {
       const card = make("button", "entry-card"); card.type = "button"; card.onclick = () => openEntry(entry.id);
       const top = make("div", "card-top"); top.append(make("span", "", fmtDate(entry.createdAt)), make("span", "", `${allParts(entry).length} part${allParts(entry).length === 1 ? "" : "s"} · ${audioTime(totalTime(entry))} audio`));
+      if(entry.kind==="interview"){const badge=make("span","interview-badge","✦ Interview"+(entry.interview?.complete?"":" · in progress"));top.replaceChildren(badge,make("span","",fmtDate(entry.createdAt)));}
       card.append(top, make("h3", "", entry.title || "Untitled thought"), make("p", "", entry.summary || (transcriptText(entry) ? transcriptText(entry).slice(0, 200) : "A thought worth keeping. Tap to add more or read it.")));
       const row = make("div", "tag-row"); for (const tag of (entry.tags || []).slice(0, 4)) row.append(make("span", "tag", tag)); card.append(row); list.append(card);
     }
@@ -74,6 +75,8 @@
     revokeUrls();
     $("entryDate").textContent = fmtDate(entry.createdAt, true).toUpperCase();
     $("entryTitle").textContent = entry.title || "Untitled thought";
+    $("interviewEntryStatus").hidden=entry.kind!=="interview";
+    $("interviewEntryStatus").textContent=entry.kind==="interview"?"✦ Interview · "+(entry.interview?.goal||"Explore your thoughts"):"";
     const clips = allClips(entry);
     $("entryDuration").textContent = `${sortedParts(entry).filter((p) => p.type === "recording").length} recording(s) · ${audioTime(totalTime(entry))} of audio · ${sortedParts(entry).filter((p) => p.type === "note").length} written note(s)`;
     const container = $("entryParts"); container.replaceChildren();
@@ -81,10 +84,11 @@
     let playingAll = false;
     sortedParts(entry).forEach((part, index) => {
       const box = make("div", "part-card"); const head = make("div", "part-head");
-      head.append(make("strong", "", part.type === "note" ? "✎ Written addition " + (index + 1) : "🎙 Recording " + (index + 1)), make("small", "", fmtDate(part.createdAt) + " · " + fmtTime(part.createdAt)));
+      head.append(make("strong", "", part.type === "note" ? (part.interviewQuestion ? "✦ Interview question " : "✎ Written addition ") + (index + 1) : "🎙 Recording " + (index + 1)), make("small", "", fmtDate(part.createdAt) + " · " + fmtTime(part.createdAt)));
       box.append(head);
       if (part.type === "note") {
         box.append(make("p", "", part.text || ""));
+        if(part.interviewQuestion)for(const id of part.sourceIds||[]){const source=state.entries.find(item=>item.id===id);if(!source)continue;const link=make("button","source-link",fmtDate(source.createdAt)+" · "+source.title);link.type="button";link.onclick=()=>openEntry(id);box.append(link);}
         const edit = make("button", "", "Edit note"); edit.type = "button"; edit.onclick = () => openEditor("Edit note", part.text || "", async (value) => { part.text = value; await saveEntry(entry); await refreshEntries(); renderEntry(); if (activeAI()) processEntry(entry.id); }); box.append(edit);
       } else {
         const segments = part.clips || [];
@@ -302,15 +306,34 @@
     showToast("Recording saved to your diary ✦");
     if (activeAI()) processEntry(rec.entryId);
   }
+  async function saveInterview(document, id) {
+    let entry=id?await transaction("entries","readonly",store=>store.get(id)):null;
+    if(!entry||entry.kind!=="interview"){
+      if(!document.answers.some(answer=>answer.answer?.trim()))return null;
+      entry=newEntry();entry.kind="interview";entry.title="Interview · "+(document.goal||"A little of everything").slice(0,70);
+    }
+    const notes=document.answers.map((answer,index)=>({
+      type:"note",id:answer.id||uid(),createdAt:answer.createdAt||new Date().toISOString(),interviewQuestion:true,
+      text:"Question "+(index+1)+": "+answer.question+"\n\n"+(answer.skipped?"Skipped":"Your answer: "+answer.answer),
+      sourceIds:Array.isArray(answer.sourceIds)?answer.sourceIds:[]
+    }));
+    entry.parts=[...notes,...allParts(entry).filter(part=>!part.interviewQuestion)];
+    entry.interview={goal:document.goal,complete:!!document.complete,answers:document.answers,updatedAt:new Date().toISOString()};
+    entry.tags=[...new Set([...(entry.tags||[]),"Interview"])];
+    entry.userTags=[...new Set([...(entry.userTags||[]),"Interview"])];
+    await saveEntry(entry);await refreshEntries();if(state.view==="home")renderHome();
+    if(document.complete&&activeAI())processEntry(entry.id);
+    return entry.id;
+  }
   function profileData() {
-    const keys=["unscripted-personal-profile","unscripted-reflection-profile","unscripted-know-quiz","unscripted-reflection-quiz"];
+    const keys=["unscripted-personal-profile","unscripted-reflection-profile","unscripted-know-quiz","unscripted-reflection-quiz","unscripted-interview-draft"];
     return Object.fromEntries(keys.map(key=>[key,localStorage.getItem(key)||""]));
   }
   function restoreProfileData(profiles) {
     if(!profiles||typeof profiles!=="object")return;
     for(const key of Object.keys(profileData())){
       const value=profiles[key];if(typeof value!=="string"||value.length>60000)continue;
-      if(key.endsWith("-quiz")){
+      if(key.endsWith("-quiz")||key==="unscripted-interview-draft"){
         let parsed;try{parsed=JSON.parse(value);}catch{continue;}
         if(!Array.isArray(parsed.answers)||parsed.answers.length>6||parsed.answers.some(x=>typeof x.question!=="string"||typeof x.answer!=="string"))continue;
       }
@@ -525,7 +548,7 @@
   }
   window.UnscriptedDiary = {
     config: getApiConfig, entries: () => state.entries, ready: () => !!state.db, recording: () => !!state.recording,
-    audio: getAudio, clips: allClips, exportBackup, callAI, activeAI, toast:showToast, profiles:profileData, restoreProfiles:restoreProfileData,
+    audio: getAudio, clips: allClips, exportBackup, callAI, activeAI, toast:showToast, profiles:profileData, restoreProfiles:restoreProfileData, saveInterview, openEntry, sources:chooseAskSources,
     freshEntries: () => transaction("entries", "readonly", s => s.getAll()),
     restore: (entries, audios) => new Promise((resolve,reject) => {
       const tx = state.db.transaction(["entries","audio"], "readwrite");
