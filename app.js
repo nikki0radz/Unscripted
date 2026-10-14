@@ -515,6 +515,7 @@
     if("storage" in navigator && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
   }
   window.UnscriptedDiary = {
+    pauseForLock: () => { const rec=state.recording;if(rec&&!rec.closing){rec.paused=true;if(rec.recorder?.state==="recording")flushClip(rec);updateRecorderUI();} },
     config: getApiConfig, entries: () => state.entries, ready: () => !!state.db, recording: () => !!state.recording,
     audio: getAudio, clips: allClips, exportBackup, callAI, activeAI, toast:showToast, profiles:profileData, restoreProfiles:restoreProfileData, saveInterview, openEntry, sources:chooseAskSources,
     freshEntries: () => transaction("entries", "readonly", s => s.getAll()),

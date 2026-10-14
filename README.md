@@ -142,3 +142,5 @@ After testing on your own phone: optional email login, encrypted device-to-devic
 
 Recordings use one full-length seekable player per session; two-minute autosave clips remain internal. Existing recordings use the same player without converting or replacing their original audio.
 Validation: `node tests/recording-player.cjs` covers cross-clip seeking and playback continuation.
+
+Always lock on opening (Private sign-in) is a per-device screen lock, enabled only after a verified passkey check. It covers and makes the diary inert before initial rendering, locks on backgrounding and page restoration, and pauses the main recorder and playback. Unlock needs fresh server-verified passkey authentication or the diary access code, with an internet connection. A signed-in session alone does not dismiss the cover. This does not encrypt the local IndexedDB or protect against someone accessing browser storage/developer tools; use your phone's device lock too.
