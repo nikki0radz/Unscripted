@@ -7,3 +7,17 @@
 .record-hero-glow{display:none}.record-circle::before{content:"";position:absolute;inset:-42px;border:1px solid rgba(184,210,171,.18);border-radius:50%;pointer-events:none}.recorder-sheet{position:relative}.recorder-close{position:absolute;top:12px;right:12px}.quiz-modal{max-height:85dvh;overflow-y:auto;width:min(100%,560px)}.quiz-question{font-family:Fraunces,serif;font-size:24px;line-height:1.4}.quiz-answer-card{padding:14px 0;border-bottom:1px solid var(--line)}.quiz-answer-card p{white-space:pre-wrap;color:var(--muted);font-size:14px}.quiz-modal textarea{width:100%;box-sizing:border-box}
 
 .app-confirm-backdrop{z-index:120}.danger-action{background:#c65c59!important;color:#fff!important}.entry-card{padding:11px 14px;border-radius:15px;min-height:0}.entries-list{gap:8px}.entry-card .card-top{font-size:10px;margin-bottom:4px}.entry-card h3{font-size:17px;margin:4px 0;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.entry-card p{font-size:12px;margin:3px 0 0;line-height:1.35;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}.entry-card>.tag-row{display:none}h1{font-size:clamp(36px,6vw,50px)}.section-title-row h2{font-size:21px}@media(max-width:600px){.entry-card{padding:10px 12px}.entry-card h3{font-size:16px}.library-section{margin-top:20px}.intro{font-size:14px}.record-heading{font-size:19px}.record-hero{margin-bottom:25px}}
+
+/* Keep long entry titles inside a single, shrinkable library column. */
+.library-section,.view{min-width:0;max-width:100%}
+.entries-list{grid-template-columns:minmax(0,1fr);min-width:0}
+.entry-card{min-width:0;max-width:100%;overflow:hidden}
+.entry-card h3,.entry-card p{min-width:0;max-width:100%}
+.card-top{min-width:0}
+.card-top>span:first-child{flex-shrink:0}
+.card-top>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.entry-title-line{min-width:0;max-width:100%}
+.entry-title-line h1{min-width:0;overflow-wrap:anywhere}
+.summary-text,.transcript-part p,.reflection-question{overflow-wrap:anywhere}
+.part-card{min-width:0;max-width:100%}
+.part-card audio{max-width:100%}
