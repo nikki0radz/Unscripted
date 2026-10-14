@@ -11,7 +11,7 @@ directory = "../"
 binding = "ASSETS"
 run_worker_first = true
 
-# After creating a PRIVATE R2 bucket, uncomment this binding and deploy again.
-# [[r2_buckets]]
-# binding = "DIARY_BACKUPS"
-# bucket_name = "unscripted-backups"
+# Private encrypted backups. Keep this bucket's public access disabled.
+[[r2_buckets]]
+binding = "DIARY_BACKUPS"
+bucket_name = "unscripted-backups"
