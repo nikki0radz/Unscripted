@@ -11,3 +11,13 @@ await assert.rejects(()=>interview({answers:Array(6).fill({question:"Q?",answer:
 await assert.rejects(()=>interview({},async()=>JSON.stringify({question:"Why? What next?"})));
 await assert.rejects(()=>interview({answers:[{question:"What matters to you?",answer:"Fairness"}]},async()=>JSON.stringify({question:"What matters to you?"})));
 console.log("Passed: goal-aware interview context, grounded history references, skipped-question boundaries, question limits and duplicate rejection.");
+
+{
+  const sourceId="79c57132-ec35-4d97-81ba-8d8d2b0ca03d";
+  const cleaned=await interview({sources:[{id:sourceId,text:"A creative project"}]},async instructions=>{
+    assert.match(instructions,/ONLY in the sourceIds array/);
+    return JSON.stringify({question:"Thinking about your project (source "+sourceId+"), what has changed?",sourceIds:[]});
+  });
+  assert.equal(cleaned.question,"Thinking about your project, what has changed?");
+  assert.deepEqual(cleaned.sourceIds,[sourceId],"source reference survives cleanup as structured metadata");
+}

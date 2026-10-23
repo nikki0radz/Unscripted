@@ -28,10 +28,14 @@
     $("quizAnswer").disabled = busy || !!voice;
     $("quizClose").disabled = busy; $("quizFinishEarly").disabled=busy||!!voice;
   }
+function cleanInterviewQuestion(text) {
+  const uuid="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+  return String(text||"").replace(new RegExp("\\s*[([]\\s*(?:sources?\\s*:?\\s*)?"+uuid+"\\s*[)\\]]","gi"),"").replace(new RegExp("\\b(?:source\\s*:?\\s*)?"+uuid+"\\b","gi"),"").replace(/\s+([,.;?!])/g,"$1").replace(/ {2,}/g," ").trim();
+}
   function showQuestion() {
     $("quizReview").hidden = true; $("quizAnswerArea").hidden = false;
     $("quizProgress").textContent = editing >= 0 ? "Edit answer " + (editing + 1) : "Question " + Math.min(data.answers.length+1,6) + " of 6";
-    $("quizQuestion").textContent = editing >= 0 ? data.answers[editing].question : data.question;
+    $("quizQuestion").textContent = cleanInterviewQuestion(editing >= 0 ? data.answers[editing].question : data.question);
     clarification?.reset(!!$("quizQuestion").textContent);
     $("quizNext").textContent = editing >= 0 ? "Save answer" : data.answers.length === 5 ? "Finish quiz" : "Next question";
     $("quizRefresh").hidden = editing >= 0; $("quizSkip").hidden = editing >= 0; $("quizFinishEarly").hidden=mode!=="interview"||editing>=0||!data.answers.some(answer=>answer.answer?.trim());
@@ -96,7 +100,7 @@
     data.answers.forEach((answer,index)=>{
       const card=document.createElement("div");card.className="quiz-answer-card";
       const q=document.createElement("strong"),a=document.createElement("p"),edit=document.createElement("button");
-      q.textContent=answer.question;a.textContent=answer.answer||"Skipped";
+      q.textContent=cleanInterviewQuestion(answer.question);a.textContent=answer.answer||"Skipped";
       edit.type="button";edit.className="text-action";edit.textContent="Edit answer";
       edit.onclick=()=>{editing=index;$("quizAnswer").value=answer.answer||"";tell("");showQuestion();};
       card.append(q,a,edit);$("quizReview").append(card);
