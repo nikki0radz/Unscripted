@@ -318,7 +318,7 @@ function cleanInterviewQuestion(text) {
   $("interviewFocus").onchange=()=>{$("interviewCustomArea").hidden=$("interviewFocus").value!=="custom";};
   $("interviewResume").onclick=()=>{$("interviewSetupModal").hidden=true;return open("interview");};
   $("interviewBegin").onclick=async()=>{
-    const goal=$("interviewFocus").value.trim()||"Surprise me";
+    const goal=$("interviewFocus").value==="custom"?$("interviewCustomGoal").value.trim():($("interviewFocus").value||"Surprise me");
     if(!goal){window.UnscriptedDiary.toast("Add a goal, or choose Surprise me.");return;}
     const draft=load("interview");
     if((draft.answers.length||draft.question)&&!await window.UnscriptedConfirm("A new interview will replace the unfinished quiz. Answers already saved as a diary entry will stay.",{title:"Start a new interview?",confirmLabel:"Start new"}))return;

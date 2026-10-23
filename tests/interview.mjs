@@ -21,3 +21,17 @@ console.log("Passed: goal-aware interview context, grounded history references, 
   assert.equal(cleaned.question,"Thinking about your project, what has changed?");
   assert.deepEqual(cleaned.sourceIds,[sourceId],"source reference survives cleanup as structured metadata");
 }
+
+const dilemma={scenario:"Imagine a runaway trolley will hit five people unless you divert it onto a track with one person.",choices:["Divert it, saving five but harming one.","Leave it on its current track."],question:"Which would you choose, and why?",sourceIds:["past"]};
+let moralCalls=0;
+const ethical=await interview({goal:"Moral dilemmas",sources,answers:[]},async(instructions,input)=>{
+  moralCalls++;const data=JSON.parse(input);assert.equal(data.questionNumber,1);assert.match(instructions,/Do NOT ask a generic question/);assert.match(instructions,/Start with a concrete dilemma/);assert(!('sources' in data),"fictional dilemmas must not be presented as diary events");return JSON.stringify(dilemma);
+});
+assert.equal(moralCalls,1);assert.match(ethical.question,/A\. Divert/);assert.match(ethical.question,/B\. Leave/);assert.deepEqual(ethical.sourceIds,[]);
+let retries=0;
+await interview({goal:"Big questions & moral dilemmas",answers:[]},async()=>JSON.stringify(++retries===1?{question:"What values matter to you?"}:dilemma));
+assert.equal(retries,2,"retry a generic response rather than show it as an ethical dilemma");
+await interview({goal:"Friendships",answers:[{question:"What happened?",answer:"We had a disagreement."}]},async(instructions,input)=>{
+  assert.match(instructions,/selected topic is mandatory for EVERY question/);assert.doesNotMatch(JSON.parse(input).suggestedAngle,/warm-up/);return JSON.stringify({question:"What made that disagreement with your friend difficult?",sourceIds:[]});
+});
+console.log("Passed: first-question ethical scenarios with two choices, legacy moral topic, off-format retry, and topic priority over generic warm-ups.");
