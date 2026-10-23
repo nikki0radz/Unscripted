@@ -6,7 +6,7 @@ const result=await interview({goal:"Build self confidence",answers:[],sources,pr
   received=JSON.parse(input);assert.match(instructions,/hypothetical/);assert.match(instructions,/Do not invent/);assert.match(instructions,/Skipping is a boundary/);
   return JSON.stringify({question:"What has changed since your July entry about confidence at work?",sourceIds:["past","invented"]});
 });
-assert.equal(received.goal,"Build self confidence");assert.deepEqual(result.sourceIds,["past"]);
+assert.equal(received.goal,"Build self confidence");assert.deepEqual(result.sourceIds,[]);assert.deepEqual(received.sources,[]);assert.equal(received.profile,"");
 await assert.rejects(()=>interview({answers:Array(6).fill({question:"Q?",answer:"A"})},async()=>"{}"));
 await assert.rejects(()=>interview({},async()=>JSON.stringify({question:"Why? What next?"})));
 await assert.rejects(()=>interview({answers:[{question:"What matters to you?",answer:"Fairness"}]},async()=>JSON.stringify({question:"What matters to you?"})));
@@ -14,8 +14,8 @@ console.log("Passed: goal-aware interview context, grounded history references, 
 
 {
   const sourceId="79c57132-ec35-4d97-81ba-8d8d2b0ca03d";
-  const cleaned=await interview({sources:[{id:sourceId,text:"A creative project"}]},async instructions=>{
-    assert.match(instructions,/ONLY in the sourceIds array/);
+  const cleaned=await interview({mode:"follow-up",sources:[{id:sourceId,text:"A creative project"}]},async instructions=>{
+    assert.match(instructions,/source IDs ONLY in sourceIds/);
     return JSON.stringify({question:"Thinking about your project (source "+sourceId+"), what has changed?",sourceIds:[]});
   });
   assert.equal(cleaned.question,"Thinking about your project, what has changed?");
@@ -35,3 +35,14 @@ await interview({goal:"Friendships",answers:[{question:"What happened?",answer:"
   assert.match(instructions,/selected topic is mandatory for EVERY question/);assert.doesNotMatch(JSON.parse(input).suggestedAngle,/warm-up/);return JSON.stringify({question:"What made that disagreement with your friend difficult?",sourceIds:[]});
 });
 console.log("Passed: first-question ethical scenarios with two choices, legacy moral topic, off-format retry, and topic priority over generic warm-ups.");
+
+for(const goal of ["Surprise me","Philosophical ideas","Likes & dislikes","Revisit my past entries"]){
+ await interview({goal,sources,profile:"Private existing profile",answers:[]},async(instructions,input)=>{
+  const data=JSON.parse(input);assert.deepEqual(data.sources,[]);assert.equal(data.profile,"");assert.match(instructions,/completely independent of their diary/);assert.match(instructions,/Only adapt to answers given within THIS interview/);
+  return JSON.stringify({question:"Which everyday invention would you most miss, and why?",sourceIds:["past"]});
+ });
+}
+await interview({mode:"follow-up",goal:"Follow up on recent plans",sources},async(instructions,input)=>{
+ assert.equal(JSON.parse(input).sources[0].id,"past");assert.match(instructions,/separate Follow up feature/);return JSON.stringify({question:"How did that conversation go?",sourceIds:["past"]});
+});
+console.log("Passed: curiosity interviews ignore archive/profile data across categories, while explicit Follow up keeps grounded sources.");

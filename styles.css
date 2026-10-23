@@ -99,3 +99,16 @@ html[data-diary-locked="true"] #diaryLockScreen{display:flex!important;visibilit
 #interviewBegin{min-height:46px;padding:12px 18px;margin:0 0 0 auto;font-size:14px;border-radius:13px}
 #interviewCustomArea{margin:0 0 18px}#interviewCustomGoal{margin-top:7px}
 #quizQuestion{white-space:pre-line}
+/* A relaxed setup card with separate content and action rows. */
+#interviewSetupModal .modal{display:flex;flex-direction:column;gap:0;isolation:isolate;overflow-x:hidden}
+#interviewSetupModal .modal-title-row{margin:0 0 8px;flex-shrink:0}
+.interview-welcome{color:var(--muted);font-size:13px;line-height:1.5;margin:0 0 24px}
+.interview-setup-body{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0}
+#interviewSetupModal .interview-focus-label{margin:0!important;font-size:17px!important}
+#interviewSetupModal .interview-topic-select{margin:0;min-width:0;width:100%}
+#interviewSetupModal #interviewFocus{height:54px;margin:0!important;max-width:100%;min-width:0;font-size:14px;line-height:normal;border-color:color-mix(in srgb,var(--accent) 35%,var(--line))}
+#interviewSetupModal #interviewCustomArea{margin:0}
+#interviewSetupModal .interview-setup-footer{position:static;display:flex;flex-direction:column;align-items:stretch;gap:12px;margin:24px 0 0!important;clear:both;flex-shrink:0}
+#interviewSetupModal #interviewBegin{position:static;inset:auto;transform:none;float:none;align-self:flex-end;margin:0;min-height:48px;padding:13px 20px;max-width:100%;white-space:normal;line-height:1.4;box-shadow:0 5px 20px color-mix(in srgb,var(--accent) 12%,transparent)}
+#interviewSetupModal #interviewResume{font-size:12px;min-height:42px;width:100%;margin:0}
+.quiz-source-links:empty{display:none}

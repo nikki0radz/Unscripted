@@ -4,9 +4,9 @@
   const $ = id => document.getElementById(id);
   const answerUid=()=>crypto.randomUUID?crypto.randomUUID():"answer-"+Date.now()+"-"+Math.random().toString(36).slice(2);
   const modes = { know: { title: "Get to know me", key: "unscripted-know-quiz", context: "unscripted-personal-profile", target: "knowQuiz" }, reflection: { title: "Reflection context", key: "unscripted-reflection-quiz", context: "unscripted-reflection-profile", target: "reflectionQuiz" }, interview: { title:"Interview me", key:"unscripted-interview-draft" } };
-  let mode = null, data = null, editing = -1, busy = false, voice = null, epoch = 0, unsavedClip = null;
+  let mode = null, data = null, editing = -1, busy = false, voice = null, epoch = 0, unsavedClip = null, setupFollowUp = false;
   const clarification=window.UnscriptedClarify?.create({buttonId:"quizExplain",panelId:"quizExplanation",question:()=>$("quizQuestion").textContent,context:()=>mode==="interview"?"Interview focus: "+(data?.goal||""):"Getting to know the diary owner"});
-  function load(which) { try { const saved = JSON.parse(localStorage.getItem(modes[which].key) || "{}"); return { answers: Array.isArray(saved.answers) ? saved.answers.slice(0,6) : [], question: typeof saved.question === "string" ? saved.question : "", complete: !!saved.complete, draft:typeof saved.draft==="string"?saved.draft:"", editing:Number.isInteger(saved.editing)?saved.editing:-1, goal:typeof saved.goal==="string"?saved.goal:"A mix of questions", entryId:typeof saved.entryId==="string"?saved.entryId:null, questionSources:Array.isArray(saved.questionSources)?saved.questionSources:[], currentAnswerId:saved.currentAnswerId||null }; } catch (_) { return { answers: [], question: "", complete: false }; } }
+  function load(which) { try { const saved = JSON.parse(localStorage.getItem(modes[which].key) || "{}"); return { answers: Array.isArray(saved.answers) ? saved.answers.slice(0,6) : [], question: typeof saved.question === "string" ? saved.question : "", complete: !!saved.complete, draft:typeof saved.draft==="string"?saved.draft:"", editing:Number.isInteger(saved.editing)?saved.editing:-1, goal:typeof saved.goal==="string"?saved.goal:"A mix of questions", entryId:typeof saved.entryId==="string"?saved.entryId:null, questionSources:Array.isArray(saved.questionSources)?saved.questionSources:[], currentAnswerId:saved.currentAnswerId||null, followUp:!!saved.followUp }; } catch (_) { return { answers: [], question: "", complete: false }; } }
   function save() { localStorage.setItem(modes[mode].key, JSON.stringify(data)); window.dispatchEvent(new Event("unscripted-change")); renderCards(); }
   function tell(message, error = false) { $("quizStatus").textContent = message; $("quizStatus").hidden = !message; $("quizStatus").classList.toggle("error", error); }
   function renderCards() {
@@ -47,7 +47,7 @@ function cleanInterviewQuestion(text) {
   }
   function renderSources(ids) {
     $("quizSourceLinks").replaceChildren();
-    if(mode!=="interview")return;
+    if(mode!=="interview"||!data?.followUp)return;
     for(const id of ids){
       const entry=window.UnscriptedDiary.entries().find(e=>e.id===id);if(!entry)continue;
       const link=document.createElement("button");link.type="button";link.className="source-link";
@@ -66,14 +66,16 @@ function cleanInterviewQuestion(text) {
     try {
       let result;
       if(mode==="interview"){
-        let selected=window.UnscriptedDiary.sources(data.goal+" "+(data.answers.at(-1)?.answer||"")).sources.filter(source=>source.id!==data.entryId);
-        if(data.goal.startsWith("Follow up on recent plans")){const recent=new Set(window.UnscriptedDiary.entries().filter(e=>e.kind!=="diaryChat"&&e.id!==data.entryId).slice(0,12).map(e=>e.id));selected=selected.filter(s=>recent.has(s.id));}
-        const sources=selected.length<=10?selected:Array.from({length:10},(_,index)=>selected[Math.floor(index*(selected.length-1)/9)]);
-        const profile=(localStorage.getItem("unscripted-personal-profile")||"")+"\n"+(localStorage.getItem("unscripted-reflection-profile")||"");
-        result=await window.UnscriptedDiary.callAI("/interview",{goal:data.goal,answers:data.answers,sources,profile:profile.slice(0,mode==="interview"?700000:6000),now:new Date().toISOString()});
+        let sources=[],profile="";
+        if(data.followUp){
+          const recent=new Set(window.UnscriptedDiary.entries().filter(e=>e.kind!=="diaryChat"&&e.id!==data.entryId).slice(0,12).map(e=>e.id));
+          sources=window.UnscriptedDiary.sources("recent plans intentions conversations "+(data.answers.at(-1)?.answer||"")).sources.filter(s=>recent.has(s.id)).slice(-10);
+          profile=(localStorage.getItem("unscripted-personal-profile")||"").slice(0,6000);
+        }
+        result=await window.UnscriptedDiary.callAI("/interview",{mode:data.followUp?"follow-up":"curiosity",goal:data.goal,answers:data.answers,sources,profile,now:new Date().toISOString()});
       }else result = await window.UnscriptedDiary.callAI("/profile-quiz", {mode, action:"question", answers:data.answers});
       if(typeof result.question!=="string"||!result.question.trim())throw new Error("No question returned. Tap Refresh question to retry.");
-      data.questionSources=result.sourceIds||[];
+      data.questionSources=mode==="interview"&&!data.followUp?[]:(result.sourceIds||[]);
       data.question = result.question; save(); tell(""); showQuestion();
     } catch (error) { tell(error.message, true); }
     finally {busy=false;clarification?.reset(!!data.question);buttons();}
@@ -122,8 +124,8 @@ function cleanInterviewQuestion(text) {
   async function open(which, options={}) {
     if(window.UnscriptedDiary.recording()){window.UnscriptedDiary.toast("Save or cancel your diary recording first.");return;}
     if(!window.UnscriptedDiary.activeAI()){window.UnscriptedDiary.toast("Connect AI or sign in to the private diary first.");return;}
-    mode=which;data=which==="interview"&&options.fresh?{answers:[],question:"",complete:false,goal:options.goal,entryId:null,questionSources:[]}:load(which);editing=data.draft&&data.editing>=0&&data.editing<data.answers.length?data.editing:-1;epoch++;
-    $("quizTitle").textContent=modes[mode].title;$("quizModal").hidden=false;$("quizAnswer").value=data.draft||"";tell("");
+    mode=which;data=which==="interview"&&options.fresh?{answers:[],question:"",complete:false,goal:options.goal,followUp:!!options.followUp,entryId:null,questionSources:[]}:load(which);editing=data.draft&&data.editing>=0&&data.editing<data.answers.length?data.editing:-1;epoch++;
+    $("quizTitle").textContent=mode==="interview"&&data.followUp?"Follow up":modes[mode].title;$("quizModal").hidden=false;$("quizAnswer").value=data.draft||"";tell("");
     if(editing>=0){showQuestion();return;}
     if(data.complete&&data.draft){editing=-1;$("quizAnswer").value="";}
     if(data.complete){review();return;}
@@ -309,6 +311,7 @@ function cleanInterviewQuestion(text) {
     await buildContext();
   };
   $("interviewStartButton").onclick=()=>{
+    setupFollowUp=false;
     if(window.UnscriptedDiary.recording()){window.UnscriptedDiary.toast("Finish your recording first.");return;}
     if(!window.UnscriptedDiary.activeAI()){window.UnscriptedDiary.toast("Connect AI or sign in first.");return;}
     const draft=load("interview");$("interviewResume").hidden=!(draft.question||draft.answers.length)&&!draft.entryId;
@@ -322,11 +325,14 @@ function cleanInterviewQuestion(text) {
     if(!goal){window.UnscriptedDiary.toast("Add a goal, or choose Surprise me.");return;}
     const draft=load("interview");
     if((draft.answers.length||draft.question)&&!await window.UnscriptedConfirm("A new interview will replace the unfinished quiz. Answers already saved as a diary entry will stay.",{title:"Start a new interview?",confirmLabel:"Start new"}))return;
-    $("interviewSetupModal").hidden=true;await open("interview",{fresh:true,goal:goal.slice(0,200)});
+    $("interviewSetupModal").hidden=true;await open("interview",{fresh:true,goal:setupFollowUp?"Follow up on recent plans":goal.slice(0,200),followUp:setupFollowUp});
   };
   document.addEventListener("keydown",event=>{if(event.key==="Escape"&&!$("interviewSetupModal").hidden)$("interviewSetupModal").hidden=true;});
   window.addEventListener("beforeunload",e=>{if(voice||unsavedClip){e.preventDefault();e.returnValue="";}});
-  window.UnscriptedQuiz={recording:()=>!!voice};
+  window.UnscriptedQuiz={recording:()=>!!voice,startFollowUp:async()=>{
+    $("interviewStartButton").onclick();if($("interviewSetupModal").hidden)return;
+    setupFollowUp=true;return $("interviewBegin").onclick();
+  }};
   window.addEventListener("unscripted-settings",renderCards);
   renderCards();
 })();

@@ -1,13 +1,13 @@
 const assert=require("node:assert/strict"),fs=require("node:fs"),vm=require("node:vm");
-const elements=new Map(),store=new Map(),events={};let stopTask,profileCalls=0,opened=null;const interviews=[];
+const elements=new Map(),store=new Map(),events={};let stopTask,profileCalls=0,opened=null;const interviews=[];let sourceRequests=0;
 function el(){return{hidden:false,disabled:false,value:"",textContent:"",children:[],classList:{toggle(){}},append(...children){this.children.push(...children)},replaceChildren(...children){this.children=children}};}
 function $(id){if(!elements.has(id))elements.set(id,el());return elements.get(id);}
 class Recorder{static isTypeSupported(){return true}constructor(){this.mimeType="audio/webm";this.state="inactive"}start(){this.state="recording"}stop(){this.state="inactive";this.ondataavailable({data:new Blob(["voice"],{type:"audio/webm"})});stopTask=this.onstop();}}
 const context={console,crypto:globalThis.crypto,Blob,FormData,MediaRecorder:Recorder,setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},confirm:()=>true,
 localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},document:{getElementById:$,createElement:el,addEventListener(){}},Event,
 navigator:{mediaDevices:{getUserMedia:async()=>({getTracks:()=>[{stop(){}}]})}},
-window:{UnscriptedConfirm:async()=>true,MediaRecorder:Recorder,dispatchEvent(){},addEventListener:(name,fn)=>events[name]=fn,UnscriptedDiary:{recording:()=>false,activeAI:()=>true,toast(){},entries:()=>[{id:"past",title:"Confidence at work",createdAt:"2026-07-14"}],sources:()=>({sources:[{id:"past",date:"2026-07-14",text:"I wondered about my confidence at work."}]}),saveInterview:async(doc,id)=>{interviews.push(structuredClone(doc));return id||"saved-interview"},openEntry:id=>{opened=id},openInterviewSummary:id=>{opened=id},callAI:async(path,body)=>{
- if(path==="/interview"){assert(body.sources.some(x=>x.id==="past"));return{question:"Interview question "+(body.answers.length+1)+"?",sourceIds:["past"]};}
+window:{UnscriptedConfirm:async()=>true,MediaRecorder:Recorder,dispatchEvent(){},addEventListener:(name,fn)=>events[name]=fn,UnscriptedDiary:{recording:()=>false,activeAI:()=>true,toast(){},entries:()=>[{id:"past",title:"Confidence at work",createdAt:"2026-07-14"}],sources:()=>{sourceRequests++;return{sources:[{id:"past",date:"2026-07-14",text:"I wondered about my confidence at work."}]};},saveInterview:async(doc,id)=>{interviews.push(structuredClone(doc));return id||"saved-interview"},openEntry:id=>{opened=id},openInterviewSummary:id=>{opened=id},callAI:async(path,body)=>{
+ if(path==="/interview"){if(body.mode==="follow-up")assert(body.sources.some(x=>x.id==="past"));else{assert.equal(body.sources.length,0);assert.equal(body.profile,"");}return{question:"Interview question "+(body.answers.length+1)+"?",sourceIds:body.mode==="follow-up"?["past"]:[]};}
  if(path==="/transcribe")return{text:"A transcribed answer."};
  if(body.action==="question")return{question:"Question "+(body.answers.length+1)+" about "+body.mode+"?"};
  profileCalls++;return{profile:body.answers.map(x=>x.answer).join("; ")};
@@ -43,7 +43,7 @@ vm.runInNewContext(fs.readFileSync("profile-quiz.js","utf8"),context);
  await $("quizRefresh").onclick();
  assert.equal($("quizAnswer").value,"Keep this unfinished answer","retry does not discard typed text");
  assert.equal($("quizStatus").hidden,true,"successful refresh clears the error");
- assert.equal($("quizSourceLinks").children.length,1);$("quizAnswer").value="I have improved at speaking up.";await $("quizNext").onclick();
+ assert.equal(sourceRequests,0,"Interview Me never retrieves archive excerpts");assert.equal($("quizSourceLinks").children.length,0);$("quizAnswer").value="I have improved at speaking up.";await $("quizNext").onclick();
  await $("quizSkip").onclick();assert.equal(interviews.at(-1).answers[1].skipped,true);
  $("quizAnswer").value="A draft to return to";await $("quizClose").onclick();await $("interviewResume").onclick();assert.equal($("quizAnswer").value,"A draft to return to");
  await $("quizFinishEarly").onclick();assert.equal(interviews.at(-1).complete,true);assert.equal(interviews.at(-1).answers.length,3);assert(!store.has("unscripted-interview-draft"));
@@ -70,5 +70,8 @@ vm.runInNewContext(fs.readFileSync("profile-quiz.js","utf8"),context);
  assert.equal(interviews.at(-1).answers[0].id,"long-answer","original clips attach to the same answer");
  await $("quizFinishEarly").onclick();assert.equal($("interviewDoneModal").hidden,false,"finish uses a simple confirmation");assert.equal($("quizModal").hidden,true);
  $("interviewViewSummary").onclick();assert.equal(opened,"audio-interview");
+ await context.window.UnscriptedQuiz.startFollowUp();
+ assert.equal($("quizTitle").textContent,"Follow up");assert(sourceRequests>0,"separate Follow up retrieves recent diary excerpts");
+ assert.match(store.get("unscripted-interview-draft"),/"followUp":true/);
  console.log("Passed: six-question UI flow, saved profile, editing answers refreshes context, draft resume and editable voice transcription.");
 })().catch(e=>{console.error(e);process.exit(1)});
