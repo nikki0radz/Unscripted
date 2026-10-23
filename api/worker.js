@@ -1,3 +1,4 @@
+import {FOCUSED_ASK_RULES,recurringEvidence} from "./ask-focus.js";
 import {styleInstructions,searchExcerpts} from "./diary-style.js";
 import {interview} from "./interview.js";
 import {passkeys} from "./passkeys.js";
@@ -75,7 +76,8 @@ async function ask(body, env) {
   if (!question || !sources.length) throw new Error("A question and diary sources are required.");
   const combined = sources.map(x => "ENTRY ID: " + x.id + "\nDATE: " + x.date + "\n" + x.text.slice(0, 16000)).join("\n\n---\n\n");
   if (combined.length > 140000) throw new Error("Too much diary text for one request.");
-  const raw = await openAIText(env, ASK_INSTRUCTIONS+"\n"+styleInstructions(body.style)+"\nFor this chat reply, always speak directly to the owner as a friend; narrative voice and summary-length options apply only to summaries, not chats. Choose the right answer length for the question. There is no required bullet list or concluding paragraph.", "CURRENT DATE: "+(typeof body.now==="string"?body.now:"")+"\nCOMMUNICATION PREFERENCES: "+(typeof body.personalProfile==="string"?body.personalProfile.slice(0,4000):"")+"\nCONVERSATION: "+JSON.stringify(Array.isArray(body.history)?body.history.slice(-16).filter(m=>["user","assistant"].includes(m.role)&&typeof m.content==="string").map(m=>({role:m.role,content:m.content.slice(0,10000)})):[])+"\nQUESTION: " + question + "\n\nARCHIVE MAY BE PARTIAL: " + (body.truncated ? "YES" : "NO") + "\n\nDIARY SOURCES:\n" + combined);
+  const patterns=await recurringEvidence(question,sources,(instructions,input)=>openAIText(env,instructions,input));
+  const raw = await openAIText(env, FOCUSED_ASK_RULES+"\n"+ASK_INSTRUCTIONS+"\n"+styleInstructions(body.style,"chat")+"\nFor this chat reply, always speak directly to the owner as a friend; narrative voice and summary-length options apply only to summaries, not chats. Choose the right answer length for the question. There is no required bullet list or concluding paragraph.", "VERIFIED RECURRENCE EVIDENCE: "+JSON.stringify(patterns)+"\nCURRENT DATE: "+(typeof body.now==="string"?body.now:"")+"\nCOMMUNICATION PREFERENCES: "+(typeof body.personalProfile==="string"?body.personalProfile.slice(0,4000):"")+"\nCONVERSATION: "+JSON.stringify(Array.isArray(body.history)?body.history.slice(-16).filter(m=>["user","assistant"].includes(m.role)&&typeof m.content==="string").map(m=>({role:m.role,content:m.content.slice(0,10000)})):[])+"\nQUESTION: " + question + "\n\nARCHIVE MAY BE PARTIAL: " + (body.truncated ? "YES" : "NO") + "\n\nDIARY SOURCES:\n" + combined);
   const obj = parseJSON(raw);
   if (typeof obj.answer !== "string" || !Array.isArray(obj.sourceIds)) throw new Error("AI answer had an unexpected format.");
   const validIds = new Set(sources.map(x => x.id));

@@ -41,7 +41,7 @@
     if (view === "home") renderHome();
     if (view === "entry") renderEntry();
     if (view === "settings") renderSettings();
-    if(view==="ask")renderChatArchive();
+    if(view==="ask"){renderChatArchive();renderAskSuggestions();}
     if($("chatView"))$("chatView").hidden=view!=="chat";
   }
   function searchMatches(entry, query) { return [entry.title, entry.summary, (entry.tags || []).join(" "), transcriptText(entry)].join(" ").toLowerCase().includes(query.toLowerCase()); }
@@ -375,7 +375,7 @@
     return entry.id;
   }
   function profileData() {
-    const keys=["unscripted-summary-style","unscripted-personal-profile","unscripted-reflection-profile","unscripted-know-quiz","unscripted-reflection-quiz","unscripted-interview-draft"];
+    const keys=["unscripted-text-style","unscripted-summary-style","unscripted-personal-profile","unscripted-reflection-profile","unscripted-know-quiz","unscripted-reflection-quiz","unscripted-interview-draft"];
     return Object.fromEntries(keys.map(key=>[key,localStorage.getItem(key)||""]));
   }
   function restoreProfileData(profiles) {
@@ -477,27 +477,38 @@
       if (entry) { entry.aiError = "Processing paused: " + error.message; await saveEntry(entry).catch(() => {}); }
     } finally { state.processing.delete(id); state.pauseTranscription.delete(id); await refreshEntries().catch(() => {}); if (state.view === "entry" && state.selected === id) renderEntry(); else if (state.view === "home") renderHome(); }
   }
-  function renderSettings() { $("apiUrl").value = getApiConfig().url; $("apiUrl").readOnly = privateHost(); $("privateSignOut").hidden = !privateHost(); window.dispatchEvent(new Event("unscripted-settings")); $("accessCode").value = sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || ""; $("rememberCode").checked = !!localStorage.getItem("unscripted-access-code"); $("accentSwatch").style.background = getComputedStyle(document.documentElement).getPropertyValue("--accent"); }
+  function renderSettings() { $("defaultToneControls").replaceChildren(toneControls(null)); $("apiUrl").value = getApiConfig().url; $("apiUrl").readOnly = privateHost(); $("privateSignOut").hidden = !privateHost(); window.dispatchEvent(new Event("unscripted-settings")); $("accessCode").value = sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || ""; $("rememberCode").checked = !!localStorage.getItem("unscripted-access-code"); $("accentSwatch").style.background = getComputedStyle(document.documentElement).getPropertyValue("--accent"); }
   function saveApiSettings() { const url = $("apiUrl").value.trim().replace(/\/+$/, ""); if (url && (!url.startsWith("https://") || !URL.canParse(url))) { notice("settingsStatus", "Use a full HTTPS backend address.", true); return; } localStorage.setItem("unscripted-api-url", url); sessionStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); if ($("rememberCode").checked) localStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); else localStorage.removeItem("unscripted-access-code"); notice("settingsStatus", activeAI() ? "Connection saved for this browser tab. New recordings will be transcribed automatically when you save them." : "Saved. Add a backend address and access code to enable AI."); }
+  function askExcerpt(text,words,limit,spread=false){
+    if(text.length<=limit)return text;
+    const gap="\n[… excerpt gap …]\n",size=Math.max(200,Math.floor((limit-gap.length*3)/4)),chunks=[];
+    for(let start=0;start<text.length;start+=size){const body=text.slice(start,start+size),lower=body.toLocaleLowerCase();chunks.push({start,body,score:words.reduce((n,w)=>n+(lower.includes(w)?1:0),0)});}
+    let chosen;
+    if(!spread&&chunks.some(c=>c.score))chosen=chunks.slice().sort((a,b)=>b.score-a.score).slice(0,4);
+    else chosen=[0,1,2,3].map(i=>chunks[Math.round(i*(chunks.length-1)/3)]);
+    return [...new Set(chosen)].sort((a,b)=>a.start-b.start).map(c=>c.body).join(gap).slice(0,limit);
+  }
   function chooseAskSources(question) {
-    const words = question.toLowerCase().split(/\W+/).filter((x) => x.length > 3);
+    const words = question.toLowerCase().split(/\W+/).filter((x) => x.length > 3&&!new Set(["what","which","when","where","have","does","there","about","that","this","keep","coming","going","things","anything","something","diary","often","most","themes","theme","recurring"]).has(x));
     const entries = state.entries.filter((e) => e.kind!=="diaryChat" && transcriptText(e).trim());
     const scored = entries.map((entry) => ({ entry, score: words.reduce((t, w) => t + (transcriptText(entry).toLowerCase().includes(w) ? 2 : 0) + ((entry.title + " " + (entry.tags || []).join(" ")).toLowerCase().includes(w) ? 4 : 0), 0) }));
     // Include both recent and older entries so historical comparisons have chronological coverage.
     scored.sort((a, b) => b.score - a.score);
-    const selected = scored.slice(0, 32).map((v) => v.entry);
+    const recurring=/recurr|keep (?:coming|going|talking|mentioning|returning)|coming back to|again and again|repeated|constantly|\bthemes?\b|\bpatterns?\b/i.test(question);
+    const selected = recurring?(entries.length<=40?entries.slice():Array.from({length:40},(_,i)=>entries[Math.round(i*(entries.length-1)/39)])):scored.slice(0, 32).map((v) => v.entry);
     const old = entries.slice(-8); for (const e of old) if (!selected.includes(e)) selected.push(e);
     selected.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     let used = 0, truncated = false;
     const sources = [];
     for (const entry of selected) {
-      const prefix = `[${entry.id}] ${entry.createdAt} ${entry.title}\nTags: ${(entry.tags || []).join(", ")}\n`;
-      const full = sortedParts(entry).map((p) => `[${p.createdAt}] ` + (p.type === "note" ? p.text : (p.clips || []).map((c) => c.transcript || "").join(" "))).join("\n");
+      const prefix = `[${entry.id}] ${entry.createdAt}\n`;
+      const full = searchableParts(entry).filter(x=>!x.part.skipped).map(x=>`[${x.part.createdAt}] `+x.text).join("\n");
       const remaining = 125000 - used - prefix.length;
       if (remaining <= 100) { truncated = true; break; }
-      const body = full.slice(0, Math.min(remaining, 11000));
+      const cap=Math.min(remaining,recurring?Math.max(500,Math.floor(118000/Math.max(1,selected.length))):11000);
+      const body = askExcerpt(full,words,cap,recurring);
       if (body.length < full.length) truncated = true;
-      sources.push({ id: entry.id, date: entry.createdAt, title: entry.title, text: prefix + body }); used += prefix.length + body.length;
+      sources.push({ id: entry.id, date: entry.createdAt, title: entry.title, text: body }); used += prefix.length + body.length;
     }
     if (selected.length < entries.length) truncated = true;
     return { sources, truncated };
@@ -508,16 +519,29 @@
     const now=new Date().toISOString();const chat={id:uid(),kind:"diaryChat",title:question.slice(0,120),createdAt:now,updatedAt:now,parts:[],messages:[]};
     await saveEntry(chat);await refreshEntries();activeChatId=chat.id;$("askInput").value="";openChat(chat.id);await sendChat(question);
   }
-  const styleDefaults={perspective:"you",friendliness:"very friendly",length:"medium",emojis:"some",gossip:false,blunt:false};
+  const styleDefaults={perspective:"you",friendliness:"very friendly",length:"medium",emojis:"some",gossip:0,blunt:0,humour:0,challenge:1,voiceTone:"warm",styleNotes:""};
   function summaryStyle(entry){let saved={};try{saved=JSON.parse(localStorage.getItem("unscripted-summary-style")||"{}");}catch{}return {...styleDefaults,...saved,...entry?.summaryStyle};}
   function toneControls(entry){
-    const wrap=make("div","tone-controls"),style=summaryStyle(entry);
-    const fields={perspective:["I","you","third person"],friendliness:["neutral","warm","very friendly","casual like a friend"],length:["short","medium","detailed"],emojis:["none","some","lots"]};
-    const labels={perspective:"Voice",friendliness:"Tone",length:"Length",emojis:"Emojis"};
-    const persist=async()=>{try{if(entry){const fresh=await transaction("entries","readonly",s=>s.get(entry.id));if(!fresh)return;fresh.summaryStyle={...style};await saveEntry(fresh);await refreshEntries();}else {localStorage.setItem("unscripted-summary-style",JSON.stringify(style));window.dispatchEvent(new Event("unscripted-change"));}showToast("Style saved for the next summary");}catch(e){showToast("Could not save style: "+e.message);}};
-    for(const [key,options] of Object.entries(fields)){const label=make("label","",labels[key]),select=make("select");for(const value of options){const o=make("option","",value);o.value=value;select.append(o);}select.value=style[key];select.onchange=()=>{style[key]=select.value;persist();};label.append(select);wrap.append(label);}
-    for(const [key,labelText] of [["gossip","Gossipy / chatty"],["blunt","Blunt & direct"]]){const label=make("label","checkbox-label"),input=make("input");input.type="checkbox";input.checked=!!style[key];input.onchange=()=>{style[key]=input.checked;persist();};label.append(input,document.createTextNode(labelText));wrap.append(label);}
-    if(entry){const b=make("button","button-soft","Apply to this entry ↻");b.type="button";b.onclick=async()=>{if(state.processing.has(entry.id)){showToast("Wait for transcription to finish first.");return;}await persist();const fresh=await transaction("entries","readonly",s=>s.get(entry.id));if(!fresh)return;fresh.summaryEdited=false;for(const part of fresh.parts||[])if(part.reflectionAnswer||part.interviewQuestion){part.summary="";part.bulletPoints=[];}await saveEntry(fresh);await refreshEntries();processEntry(entry.id);};wrap.append(b,make("p","tiny","Changing these options keeps your current summary. Apply when you want a new version."));}
+    const wrap=make("div","tone-controls personal-style-controls"),style=summaryStyle(entry),status=make("p","style-save-status");status.setAttribute("role","status");
+    const persist=async()=>{try{if(entry){const fresh=await transaction("entries","readonly",s=>s.get(entry.id));if(!fresh)return false;fresh.summaryStyle={...style};await saveEntry(fresh);await refreshEntries();}else {localStorage.setItem("unscripted-summary-style",JSON.stringify(style));window.dispatchEvent(new Event("unscripted-change"));}status.textContent=entry?"Saved for this entry’s next summary":"Saved for future summaries and chats";return true;}catch(e){status.textContent="Could not save: "+e.message;return false;}};
+    const preview=make("div","tone-preview"),previewLabel=make("span","tiny","Style preview"),previewText=make("p");preview.append(previewLabel,previewText);
+    const level=v=>v===true?2:Math.max(0,Math.min(3,Number(v)||0));
+    function updatePreview(){const who=style.perspective==="I"?"I’m":style.perspective==="third person"?"They’re":"You’re";let text=who+" figuring out what matters and what to do next.";if(level(style.gossip)>1)text+=" There’s a bit to unpack here.";if(level(style.blunt)>1)text+=" Time to be honest about it.";if(style.emojis!=="none")text+=style.emojis==="lots"?" 💭✨😊":" 💭";previewText.textContent=text;}
+    function chips(key,title,choices){const group=make("div","style-chip-group"),heading=make("div","style-control-label",title),row=make("div","style-chip-row");row.setAttribute("role","group");row.setAttribute("aria-label",title);function draw(){row.replaceChildren();for(const [value,label] of choices){const b=make("button","style-chip"+(style[key]===value?" selected":""),label);b.type="button";b.setAttribute("aria-pressed",style[key]===value);b.onclick=()=>{style[key]=value;draw();updatePreview();persist();};row.append(b);}}draw();group.append(heading,row);wrap.append(group);}
+    chips("perspective","Tell it as…",[["I","I / my"],["you","You / your"],["third person","Third person"]]);
+    chips("length","Summary length",[["short","A little"],["medium","Balanced"],["detailed","The details"]]);
+    chips("voiceTone","Personality",[["warm","☀ Warm"],["playful","✦ Playful"],["reflective","☾ Thoughtful"],["matter-of-fact","◎ Matter-of-fact"],["supportive","♡ Encouraging"],["curious","↗ Curious"]]);
+    function slider(key,title,labels,get,set){const label=make("label","style-slider"),top=make("span"),name=make("span","",title),output=make("output"),input=make("input");input.type="range";input.min=0;input.max=labels.length-1;input.step=1;input.value=get();input.setAttribute("aria-label",title);function draw(){output.textContent=labels[Number(input.value)];input.setAttribute("aria-valuetext",output.textContent);}input.oninput=()=>{set(Number(input.value));draw();updatePreview();};input.onchange=persist;draw();top.append(name,output);label.append(top,input);wrap.append(label);}
+    const warmth=["neutral","warm","very friendly","casual like a friend"];
+    slider("friendliness","Friendliness",["Neutral","Warm","Friendly","Like a friend"],()=>Math.max(0,warmth.indexOf(style.friendliness)),v=>style.friendliness=warmth[v]);
+    slider("gossip","Chatty / gossipy",["None","A little","Chatty","Full catch-up"],()=>level(style.gossip),v=>style.gossip=v);
+    slider("blunt","Directness",["Gentle","Clear","Blunt","Straight to it"],()=>level(style.blunt),v=>style.blunt=v);
+    slider("humour","Humour",["None","A touch","Playful","Very playful"],()=>level(style.humour),v=>style.humour=v);
+    slider("challenge","Challenge my thinking",["Just reflect","Ask gently","Challenge me","Push back clearly"],()=>level(style.challenge),v=>style.challenge=v);
+    const emoji=["none","some","lots"];
+    slider("emojis","Emojis",["None","A few","Expressive"],()=>Math.max(0,emoji.indexOf(style.emojis)),v=>style.emojis=emoji[v]);
+    const label=make("label","style-notes-label","Anything else about how I should sound?"),notes=make("textarea");notes.rows=2;notes.maxLength=800;notes.value=style.styleNotes||"";notes.placeholder="e.g. Simple English, a little cheeky, no therapy jargon";notes.onchange=()=>{style.styleNotes=notes.value;persist();};label.append(notes);wrap.append(label,preview,status);updatePreview();
+    if(entry){const b=make("button","button-soft","Apply to this entry ↻");b.type="button";b.onclick=async()=>{if(state.processing.has(entry.id)){showToast("Wait for transcription to finish first.");return;}if(!await persist())return;const fresh=await transaction("entries","readonly",s=>s.get(entry.id));if(!fresh)return;fresh.summaryEdited=false;for(const part of fresh.parts||[])if(part.reflectionAnswer||part.interviewQuestion){part.summary="";part.bulletPoints=[];}await saveEntry(fresh);await refreshEntries();processEntry(entry.id);};wrap.append(b,make("p","tiny","Apply when you want a new version. Your current summary stays until then."));}
     return wrap;
   }
   function renderToneControls(entry){let panel=$("entryToneControls");if(!panel){panel=make("details","entry-block tone-panel");panel.id="entryToneControls";$("deleteEntryButton").before(panel);}const expanded=panel.open;panel.replaceChildren(make("summary","","✦ Summary style"),toneControls(entry));panel.open=expanded;}
@@ -545,8 +569,11 @@
   function cleanAnswer(text,sources){let answer=String(text||"");for(const source of sources){answer=answer.split("["+source.id+"]").join("");answer=answer.split(source.id).join("");}answer=answer.replace(/\s*[([]\s*(?:sources?\s*:?\s*)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*[)\]]/gi,"");return answer.replace(/\(\s*(?:source\s*:?)?\s*\)/gi,"").replace(/\[\s*\]/g,"").replace(/ +([.,!?])/g,"$1").replace(/ {2,}/g," ").trim();}
   function relativeDate(iso){const days=Math.floor((Date.now()-new Date(iso).getTime())/86400000);if(days===0)return "Today";if(days===1)return "Yesterday";if(days<7)return days+" days ago";if(days<28)return Math.floor(days/7)+" weeks ago";return new Date(iso).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"});}
   function openChat(id){activeChatId=id;switchView("chat");renderChat();}
+  let suggestionRound=0;
+  const suggestionIdeas=["Is there one theme I return to across different days?","What have I felt genuinely excited about lately?","Is there something I said I’d do but haven’t followed up on?","Have my feelings about anything changed?","What seems to drain my energy?","When have I sounded most like myself?","What small wins have I mentioned?","What am I still undecided about?","Have I described the same problem in different situations?"];
+  function renderAskSuggestions(){const target=$("askSuggestions");if(!target)return;target.replaceChildren();for(let i=0;i<3;i++){const text=suggestionIdeas[(suggestionRound*3+i)%suggestionIdeas.length],button=make("button","suggestion");const icon=make("span","suggestion-icon","✦"),label=make("span","",text);icon.setAttribute("aria-hidden","true");button.type="button";button.append(icon,label);button.onclick=()=>{$("askInput").value=text;$("askInput").focus();};target.append(button);}suggestionRound++;}
   function renderChatArchive(){const target=$("chatArchive");if(!target)return;target.replaceChildren();const chats=state.entries.filter(e=>e.kind==="diaryChat");if(!chats.length)return;target.append(make("h3","","Your chats"));for(const chat of chats){const b=make("button","entry-card chat-archive-row",chat.title+" · "+relativeDate(chat.createdAt));b.type="button";b.onclick=()=>openChat(chat.id);target.append(b);}}
-  function renderChat(){const chat=state.entries.find(e=>e.id===activeChatId);if(!chat)return;$("chatTitle").textContent=chat.title;const target=$("chatMessages");target.replaceChildren();for(const m of chat.messages||[]){const bubble=make("div","chat-bubble "+m.role);bubble.append(make("div","chat-text",m.content));for(const id of m.sourceIds||[]){const entry=state.entries.find(e=>e.id===id);if(!entry)continue;const b=make("button","source-link",relativeDate(entry.createdAt)+" · "+entry.title);b.type="button";b.onclick=()=>openEntry(id);bubble.append(b);}target.append(bubble);}$("chatContextNote").textContent=chat.truncated?"Based on selected diary excerpts; some history falls outside the context available for this reply.":"Based on the diary excerpts available when each reply was written.";}
+  function renderChat(){const chat=state.entries.find(e=>e.id===activeChatId);if(!chat)return;$("chatTitle").textContent=chat.title;const target=$("chatMessages");target.replaceChildren();for(const m of chat.messages||[]){const bubble=make("div","chat-bubble "+m.role);bubble.append(make("span","chat-speaker",m.role==="user"?"You":"Your diary"),make("div","chat-text",cleanAnswer(m.content,state.entries)));target.append(bubble);}$("chatContextNote").textContent=chat.truncated?"Based on selected diary excerpts; some history falls outside the context available for this reply.":"Based on the diary excerpts available when each reply was written.";}
   async function sendChat(question,retry=false){if(chatBusy)return;const chat=state.entries.find(e=>e.id===activeChatId);if(!chat)return;chatBusy=true;$("chatSend").disabled=true;$("deleteChat").disabled=true;try{if(!retry){chat.messages.push({role:"user",content:question});await saveEntry(chat);}renderChat();notice("chatStatus","Thinking…");const history=chat.messages.slice(-16,-1).map(m=>({role:m.role,content:m.content}));const {sources,truncated}=chooseAskSources(chat.messages.slice(-4).map(m=>m.content).join(" "));if(!sources.length)throw Error("Transcribe a recording first so your diary has something to draw on.");const result=await callAI("/ask",{question,sources,truncated,history,now:new Date().toISOString(),personalProfile:localStorage.getItem("unscripted-personal-profile")||"",style:summaryStyle(null)});chat.messages.push({role:"assistant",content:cleanAnswer(result.answer,sources),sourceIds:(result.sourceIds||[]).filter(id=>sources.some(s=>s.id===id)),createdAt:new Date().toISOString()});chat.truncated=truncated;await saveEntry(chat);await refreshEntries();renderChat();notice("chatStatus","");}catch(e){notice("chatStatus","Could not reply: "+e.message,true);const b=make("button","button-soft","Retry reply");b.type="button";b.onclick=()=>sendChat(question,true);$("chatStatus").append(b);}finally{chatBusy=false;$("chatSend").disabled=false;$("deleteChat").disabled=false;}}
   function bindEnhancements(){
     $("searchButton").onclick=()=>{semanticResults=null;searchRevision++;renderHome();if($("searchInput").value.trim().split(/\s+/).length>=4&&activeAI())searchByMeaning();};$("searchInput").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("searchButton").click();}};$("semanticSearch").onclick=searchByMeaning;
@@ -555,6 +582,7 @@
     $("deleteChat").onclick=async()=>{if(chatBusy||!activeChatId)return;if(!await window.UnscriptedConfirm("Delete this saved conversation? Older backups may still contain it.",{title:"Delete chat?",confirmLabel:"Delete chat",danger:true}))return;await transaction("entries","readwrite",s=>s.delete(activeChatId));await refreshEntries();window.dispatchEvent(new Event("unscripted-change"));switchView("ask");};
     $("quizAnswerArea").prepend($("quizVoice"));$("quizTypedAnswer").hidden=false;$("quizAnswer").placeholder="Or type your answer here…";$("quizAnswer").rows=3;
     $("defaultToneControls").replaceChildren(toneControls(null));
+    $("shuffleAskSuggestions").onclick=renderAskSuggestions;renderAskSuggestions();
   }
 
   const summaryViews = new Map();
@@ -686,7 +714,7 @@
       for (const row of data.audios) if (typeof row.id === "string" && typeof row.content === "string") await saveAudio(row.id, dataURLtoBlob(row.content));
       for (const entry of data.entries) if (typeof entry.id === "string" && Array.isArray(entry.parts)) await saveEntry(entry);
       if (typeof data.profile === "string") localStorage.setItem("unscripted-reflection-profile", data.profile.slice(0,4000)); restoreProfileData(data.profiles);
-      await refreshEntries(); switchView("home"); showToast("Backup imported ✦");
+      window.UnscriptedTextStyle?.apply();await refreshEntries(); switchView("home"); showToast("Backup imported ✦");
     } catch (error) { showToast("Import failed: " + error.message); }
     $("backupInput").value = "";
   }

@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {recurringEvidence,isRecurrenceQuestion,FOCUSED_ASK_RULES} from '../api/ask-focus.js';
+const sources=[{id:'a',date:'2026-10-01',text:'Owen slept in. I felt left waiting.'},{id:'b',date:'2026-10-02',text:'I felt left waiting for Owen again.'},{id:'c',date:'2026-10-03',text:'Owen was late and I felt left waiting.'},{id:'d',date:'2026-10-03',text:'I felt left waiting.'}];
+const evidence=sources.map(s=>({id:s.id,quote:'I felt left waiting'}));
+const result=await recurringEvidence('What do I keep coming back to?',sources,async()=>JSON.stringify({themes:[{theme:'Being left waiting',evidence:[...evidence,{id:'a',quote:'I felt left waiting'},{id:'invented',quote:'I felt left waiting'}]},{theme:'Unsupported',evidence:[{id:'a',quote:'I feel ignored every day'}]}],people:[{name:'Owen',evidence:sources.map(s=>({id:s.id,quote:s.text}))}]}));
+assert.equal(result.themes.length,1);assert.equal(result.themes[0].distinctDays,3);assert.equal(result.themes[0].entryCount,4);assert.equal(result.people[0].distinctDays,3);
+const oneDay=await recurringEvidence('Any recurring themes?',sources.map(s=>({...s,date:'2026-10-01'})),async()=>JSON.stringify({themes:[{theme:'Waiting',evidence}],people:[]}));assert.equal(oneDay.themes.length,0,'several recordings on one date do not establish a recurring theme');
+let called=false;assert.equal(await recurringEvidence('What did I decide about my project?',sources,async()=>{called=true}),null);assert.equal(called,false,'narrow factual questions do not get a broad themes pass');
+assert(isRecurrenceQuestion('What topics do I mention most often?'));assert.match(FOCUSED_ASK_RULES,/no clear recurring theme/);assert.match(FOCUSED_ASK_RULES,/No source links/);
+console.log('Passed: verified multi-day recurrence, duplicate and fabricated-evidence rejection, frequent people separated from themes, and narrow-question routing.');
