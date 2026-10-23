@@ -9,7 +9,7 @@ document:{getElementById:element,createElement:tag=>({tag,style:{},children:[],a
 localStorage:{getItem:()=>null},sessionStorage:{getItem:()=>null},
 window:{MediaRecorder:Recorder,indexedDB:{},dispatchEvent(){}}};
 let source=fs.readFileSync("app.js","utf8");
-source=source.replace("  init();", '  state.db = globalThis.fixtureDb; showToast=message=>{globalThis.lastToast=message};openEntry=id=>{state.selected=id};switchView=view=>{state.view=view};activeAI=()=>false;globalThis.testRecording={state,startRecording,startClip,flushClip,cancelRecording,updateRecorderUI,saveInterview,savePerspective,searchMatches,chooseAskSources,allClips,processEntry,renderTranscriptionProgress,savePerspectiveClip,finishPerspective,discardPerspective};renderEntry=()=>{};renderHome=()=>{};callAI=(...args)=>globalThis.fakeAI(...args);');
+source=source.replace("  init();", '  state.db = globalThis.fixtureDb; showToast=message=>{globalThis.lastToast=message};openEntry=id=>{state.selected=id};switchView=view=>{state.view=view};activeAI=()=>false;globalThis.testRecording={state,startRecording,startClip,flushClip,cancelRecording,updateRecorderUI,saveInterview,savePerspective,searchMatches,chooseAskSources,allClips,processEntry,renderTranscriptionProgress,savePerspectiveClip,finishPerspective,discardPerspective,saveInterviewClip,transcribeInterviewAnswer};renderEntry=()=>{};renderHome=()=>{};callAI=(...args)=>globalThis.fakeAI(...args);');
 context.fixtureDb=db;
 vm.runInNewContext(source,context);
 const T=context.testRecording;
@@ -68,5 +68,19 @@ const T=context.testRecording;
  const audioCount=audios.size;
  await assert.rejects(T.savePerspectiveClip("missing",null,{question:"Q"},new Blob(["orphan"]),100));
  assert.equal(audios.size,audioCount,"missing entries cannot create orphan reflection audio");
+
+ const interviewAudio=await T.saveInterviewClip(null,null,{goal:"Confidence",question:"What changed?",typedAnswer:"My written note"},new Blob(["interview voice"]),120000);
+ let interviewRow=entries.get(interviewAudio.entryId);
+ assert(T.allClips(interviewRow).length===1,"interview audio included in backups and player clips");
+ const audioId=interviewRow.parts[0].clips[0].id;
+ context.fakeAI=async path=>path==="/transcribe"?{text:"I spoke up at work"}:{summary:"An answer summary",bulletPoints:["Spoke up at work"],tags:[]};
+ const interviewResult=await T.transcribeInterviewAnswer(interviewAudio.entryId,interviewAudio.answerId);
+ assert.match(interviewResult.answer,/My written note/);assert.match(interviewResult.answer,/spoke up/);assert.equal(interviewResult.summary,"An answer summary");
+ await T.saveInterview({goal:"Confidence",answers:[{id:interviewAudio.answerId,question:"What changed?",answer:interviewResult.answer,hasAudio:true}],complete:true},interviewAudio.entryId);
+ interviewRow=entries.get(interviewAudio.entryId);
+ assert.equal(interviewRow.parts[0].clips[0].id,audioId,"saving interview progress preserves original audio");
+ assert.equal(interviewRow.parts[0].summary,"An answer summary");
+ await T.processEntry(interviewAudio.entryId);
+ assert.equal(entries.get(interviewAudio.entryId).summary,"An answer summary","complete interview also gets an overall summary");
  console.log("Passed: saved progress, retries, silence, pause after current clip, resume and compact controls hidden on completion.");
 })().catch(e=>{console.error(e);process.exit(1)});

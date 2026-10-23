@@ -24,7 +24,7 @@
   async function refreshEntries() { state.entries = (await transaction("entries", "readonly", (s) => s.getAll()) || []).sort((a, b) => b.createdAt.localeCompare(a.createdAt)); }
   const currentEntry = () => state.entries.find((entry) => entry.id === state.selected);
   const allParts = (entry) => entry.parts || [];
-  const allClips = (entry) => allParts(entry).filter((p) => p.type === "recording" || p.reflectionAnswer).flatMap((p) => p.clips || []);
+  const allClips = (entry) => allParts(entry).filter((p) => p.type === "recording" || p.reflectionAnswer || p.interviewQuestion).flatMap((p) => p.clips || []);
   const totalTime = (entry) => allClips(entry).reduce((sum, clip) => sum + (clip.duration || 0), 0);
   const transcriptText = (entry) => allParts(entry).map((part) => part.type === "note" ? (part.text || "") : (part.clips || []).map((c) => c.transcript || "").join(" ")).join("\n");
   const sortedParts = (entry) => allParts(entry).slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -79,6 +79,9 @@
     $("entryTitle").textContent = entry.title || "Untitled thought";
     $("interviewEntryStatus").hidden=entry.kind!=="interview";
     $("interviewEntryStatus").textContent=entry.kind==="interview"?"✦ Interview · "+(entry.interview?.goal||"Explore your thoughts"):"";
+    const summarySection=$("entrySummary").closest("section");
+    if(entry.kind==="interview")$("entryParts").previousElementSibling.before(summarySection);
+    else $("entryStatus").after(summarySection);
     const clips = allClips(entry);
     $("entryDuration").textContent = `${sortedParts(entry).filter((p) => p.type === "recording").length} recording(s) · ${audioTime(totalTime(entry))} of audio · ${sortedParts(entry).filter((p) => p.type === "note" && !p.reflectionAnswer).length} written note(s) · ${sortedParts(entry).filter(p=>p.reflectionAnswer).length} reflection(s)`;
     const container = $("entryParts"); container.replaceChildren();
@@ -86,6 +89,15 @@
       const box = make("div", "part-card"); const head = make("div", "part-head");
       head.append(make("strong", "", part.type === "note" ? (part.interviewQuestion ? "✦ Interview question " : "✎ Written addition ") + (index + 1) : "🎙 Recording " + (index + 1)), make("small", "", fmtDate(part.createdAt) + " · " + fmtTime(part.createdAt)));
       box.append(head);
+      if(part.interviewQuestion){
+        box.append(make("h3","reflection-question",part.question||"Interview question"));
+        if(part.clips?.length)box.append(window.UnscriptedRecordingPlayer.create(part.clips,getAudio,"interview answer"));
+        const pending=(part.clips||[]).some(c=>!c.transcript&&!c.transcriptionComplete);
+        if(pending){const retry=make("button","text-action","⚠ Continue transcription");retry.onclick=()=>processEntry(entry.id);box.append(retry);}
+        box.append(summarySwitch(part.id,part.summary,part.bulletPoints,()=>processEntry(entry.id)));
+        const details=make("details","reflection-transcript");details.append(make("summary","","Full answer"),make("p","reflection-answer-text",part.answer||part.text||"Audio saved; transcript pending."));box.append(details);
+        container.append(box);return;
+      }
       if (part.type === "note") {
         box.append(make("p", "", part.text || ""));
         if(part.interviewQuestion)for(const id of part.sourceIds||[]){const source=state.entries.find(item=>item.id===id);if(!source)continue;const link=make("button","source-link",fmtDate(source.createdAt)+" · "+source.title);link.type="button";link.onclick=()=>openEntry(id);box.append(link);}
@@ -126,7 +138,7 @@
       $("entryParts").after(panel);
     }
     panel.replaceChildren();
-    const clips = allParts(entry).filter(p => p.type === "recording" || p.reflectionAnswer).flatMap(p => p.clips || []);
+    const clips = allParts(entry).filter(p => p.type === "recording" || p.reflectionAnswer || p.interviewQuestion).flatMap(p => p.clips || []);
     const done = clips.filter(c => c.transcript || c.transcriptionComplete).length;
     panel.hidden = !clips.length || done === clips.length;
     if (panel.hidden) return;
@@ -315,18 +327,38 @@
     showToast("Recording saved to your diary ✦");
     if (activeAI()) processEntry(rec.entryId);
   }
+  async function saveInterviewClip(entryId,answerId,doc,blob,duration) {
+    if(!entryId){const entry=newEntry();entry.kind="interview";entry.title="Interview · "+(doc.goal||"Your thoughts");entry.interview={goal:doc.goal,answers:[],complete:false};await saveEntry(entry);entryId=entry.id;}
+    const partId=answerId||uid(),clipId=uid();
+    await new Promise((resolve,reject)=>{const tx=state.db.transaction(["entries","audio"],"readwrite"),store=tx.objectStore("entries"),req=store.get(entryId);
+      req.onsuccess=()=>{const entry=req.result;if(!entry){tx.abort();return;}let part=entry.parts.find(p=>p.id===partId);
+        if(!part){part={id:partId,type:"note",interviewQuestion:true,interviewPending:true,createdAt:new Date().toISOString(),question:doc.question,sourceIds:doc.sourceIds||[],typedAnswer:doc.typedAnswer||"",answer:"",text:"Interview question: "+doc.question,clips:[]};entry.parts.push(part);}
+        part.clips.push({id:clipId,duration,mime:blob.type,transcript:""});part.summary="";part.bulletPoints=[];tx.objectStore("audio").put({id:clipId,blob});entry.updatedAt=new Date().toISOString();store.put(entry);};
+      tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error("Could not save interview audio."));
+    });await refreshEntries();window.dispatchEvent(new Event("unscripted-change"));return {entryId,answerId:partId};
+  }
+  async function transcribeInterviewAnswer(entryId,answerId) {
+    await processEntry(entryId);
+    const entry=await transaction("entries","readonly",s=>s.get(entryId)),part=entry?.parts.find(p=>p.id===answerId);
+    if(!part)throw Error("Saved answer not found.");
+    if(part.clips?.some(c=>!c.transcript&&!c.transcriptionComplete)||(!part.summary&&entry.aiError))throw Error(entry.aiError||"Some clips are still waiting. Retry transcription.");
+    return {answer:part.answer||"",summary:part.summary||"",bulletPoints:part.bulletPoints||[]};
+  }
+  function openInterviewSummary(id){openEntry(id);$("entrySummaryViews")?.scrollIntoView({behavior:"smooth",block:"start"});}
   async function saveInterview(document, id) {
     let entry=id?await transaction("entries","readonly",store=>store.get(id)):null;
     if(!entry||entry.kind!=="interview"){
-      if(!document.answers.some(answer=>answer.answer?.trim()))return null;
+      if(!document.answers.some(answer=>answer.answer?.trim()||answer.hasAudio))return null;
       entry=newEntry();entry.kind="interview";entry.title="Interview · "+(document.goal||"A little of everything").slice(0,70);
     }
     const notes=document.answers.map((answer,index)=>({
+      ...(entry.parts||[]).find(p=>p.id===answer.id),
+      interviewPending:false,question:answer.question,answer:answer.answer,skipped:!!answer.skipped,
       type:"note",id:answer.id||uid(),createdAt:answer.createdAt||new Date().toISOString(),interviewQuestion:true,
       text:"Question "+(index+1)+": "+answer.question+"\n\n"+(answer.skipped?"Skipped":"Your answer: "+answer.answer),
       sourceIds:Array.isArray(answer.sourceIds)?answer.sourceIds:[]
     }));
-    entry.parts=[...notes,...allParts(entry).filter(part=>!part.interviewQuestion)];
+    entry.parts=[...notes,...allParts(entry).filter(part=>!part.interviewQuestion||(part.interviewPending&&!notes.some(n=>n.id===part.id)))];
     entry.interview={goal:document.goal,complete:!!document.complete,answers:document.answers,updatedAt:new Date().toISOString()};
     entry.tags=[...new Set([...(entry.tags||[]),"Interview"])];
     entry.userTags=[...new Set([...(entry.userTags||[]),"Interview"])];
@@ -382,7 +414,7 @@
         if (index >= 0) state.entries[index] = fresh;
       };
       for (const part of sortedParts(entry)) {
-        if (part.type !== "recording" && !part.reflectionAnswer) continue;
+        if (part.type !== "recording" && !part.reflectionAnswer && !part.interviewQuestion) continue;
         for (const clip of part.clips || []) {
           if (state.pauseTranscription.has(id)) return;
           if (clip.transcript || clip.transcriptionComplete) continue;
@@ -398,15 +430,15 @@
           await persist(fresh => {
             const saved = allClips(fresh).find(c => c.id === clip.id);
             if (saved) { saved.transcript = clip.transcript; saved.transcriptionComplete = true; }
-            const reflection=allParts(fresh).find(p=>p.reflectionAnswer&&(p.clips||[]).some(c=>c.id===clip.id));
-            if(reflection&&!reflection.answerEdited){reflection.answer=[reflection.typedAnswer||"",...(reflection.clips||[]).map(c=>c.transcript||"")].filter(Boolean).join("\n\n");reflection.text="Reflection question: "+reflection.question+"\nYour answer: "+reflection.answer;}
+            const reflection=allParts(fresh).find(p=>(p.reflectionAnswer||p.interviewQuestion)&&(p.clips||[]).some(c=>c.id===clip.id));
+            if(reflection&&!reflection.answerEdited){reflection.answer=[reflection.typedAnswer||"",...(reflection.clips||[]).map(c=>c.transcript||"")].filter(Boolean).join("\n\n");reflection.text=(reflection.interviewQuestion?"Interview question: ":"Reflection question: ")+reflection.question+"\nYour answer: "+reflection.answer;}
             fresh.aiError = "";
           }); // persist each completed clip without overwriting concurrent edits
           if (state.view === "entry" && state.selected === id) renderEntry();
         }
       }
       if (state.pauseTranscription.has(id)) return;
-      for(const reflection of allParts(entry).filter(p=>p.reflectionAnswer)) {
+      for(const reflection of allParts(entry).filter(p=>(p.reflectionAnswer||p.interviewQuestion)&&!p.skipped)) {
         if(state.pauseTranscription.has(id))return;
         if(reflection.summary&&reflection.bulletPoints?.length)continue;
         const answer=reflection.answer||reflection.text||"";
@@ -415,6 +447,7 @@
         await persist(fresh=>{const part=fresh.parts.find(p=>p.id===reflection.id);if(part){part.summary=result.summary||"";part.bulletPoints=Array.isArray(result.bulletPoints)?result.bulletPoints:[];}});
         if(state.view==="entry"&&state.selected===id)renderEntry();
       }
+      if(entry.kind==="interview"&&!entry.interview?.complete)return;
       const content = sortedParts(entry).filter(p=>!p.reflectionAnswer).map((part) => ({ createdAt: part.createdAt, type: part.type, text: part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || "").join(" ") })).filter((p) => p.text?.trim());
       if (!content.length) { if(allParts(entry).some(p=>p.reflectionAnswer&&p.summary))return; throw new Error("There's no transcribed or written text to summarise yet."); }
       const data = await callAI("/organize", { content, existingTitle: entry.title, existingTags: entry.tags || [], personalProfile: (localStorage.getItem("unscripted-personal-profile") || "").slice(0,4000) });
@@ -658,7 +691,7 @@
   window.UnscriptedDiary = {
     pauseForLock: () => { const rec=state.recording;if(rec&&!rec.closing){rec.paused=true;if(rec.recorder?.state==="recording")flushClip(rec);updateRecorderUI();} },
     config: getApiConfig, entries: () => state.entries, ready: () => !!state.db, recording: () => !!state.recording,
-    audio: getAudio, clips: allClips, exportBackup, callAI, activeAI, toast:showToast, savePerspectiveClip, finishPerspective, discardPerspective, processEntry, profiles:profileData, restoreProfiles:restoreProfileData, saveInterview, savePerspective, perspectiveQuestion, openEntry, sources:chooseAskSources,
+    audio: getAudio, clips: allClips, exportBackup, callAI, activeAI, toast:showToast, saveInterviewClip, transcribeInterviewAnswer, openInterviewSummary, summarySwitch, savePerspectiveClip, finishPerspective, discardPerspective, processEntry, profiles:profileData, restoreProfiles:restoreProfileData, saveInterview, savePerspective, perspectiveQuestion, openEntry, sources:chooseAskSources,
     freshEntries: () => transaction("entries", "readonly", s => s.getAll()),
     restore: (entries, audios) => new Promise((resolve,reject) => {
       const tx = state.db.transaction(["entries","audio"], "readwrite");
