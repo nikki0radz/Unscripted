@@ -22,6 +22,7 @@
   function buttons() {
     $("quizNext").disabled = busy || !!voice;
     $("quizSkip").disabled = busy || !!voice;
+    $("quizRefresh").disabled = busy || !!voice;
     $("quizVoice").disabled = busy;
     $("quizAnswer").disabled = busy || !!voice;
     $("quizClose").disabled = busy; $("quizFinishEarly").disabled=busy||!!voice;
@@ -31,7 +32,7 @@
     $("quizProgress").textContent = editing >= 0 ? "Edit answer " + (editing + 1) : "Question " + Math.min(data.answers.length+1,6) + " of 6";
     $("quizQuestion").textContent = editing >= 0 ? data.answers[editing].question : data.question;
     $("quizNext").textContent = editing >= 0 ? "Save answer" : data.answers.length === 5 ? "Finish quiz" : "Next question";
-    $("quizSkip").hidden = editing >= 0; $("quizFinishEarly").hidden=mode!=="interview"||editing>=0||!data.answers.some(answer=>answer.answer?.trim());
+    $("quizRefresh").hidden = editing >= 0; $("quizSkip").hidden = editing >= 0; $("quizFinishEarly").hidden=mode!=="interview"||editing>=0||!data.answers.some(answer=>answer.answer?.trim());
     renderSources(editing>=0?data.answers[editing].sourceIds||[]:data.questionSources||[]);
     buttons();
   }
@@ -60,6 +61,7 @@
         const profile=(localStorage.getItem("unscripted-personal-profile")||"")+"\n"+(localStorage.getItem("unscripted-reflection-profile")||"");
         result=await window.UnscriptedDiary.callAI("/interview",{goal:data.goal,answers:data.answers,sources,profile:profile.slice(0,6000),now:new Date().toISOString()});
       }else result = await window.UnscriptedDiary.callAI("/profile-quiz", {mode, action:"question", answers:data.answers});
+      if(typeof result.question!=="string"||!result.question.trim())throw new Error("No question returned. Tap Refresh question to retry.");
       data.questionSources=result.sourceIds||[];
       data.question = result.question; save(); tell(""); showQuestion();
     } catch (error) { tell(error.message, true); }
@@ -195,6 +197,12 @@
     } catch(error){if(voice)stopVoiceIndicator(voice);stream?.getTracks().forEach(t=>t.stop());voice=null;tell("Could not record: "+error.message,true);}
     finally{busy=false;buttons();}
   }
+  $("quizRefresh").onclick=async()=>{
+    if(busy||voice||editing>=0)return;
+    if($("quizAnswer").value.trim()&&!await window.UnscriptedConfirm("Refresh the question? Your unfinished answer will stay below.",{title:"Refresh question?",confirmLabel:"Refresh question"}))return;
+    data.draft=$("quizAnswer").value;data.editing=editing;save();
+    await nextQuestion();
+  };
   $("quizNext").onclick=()=>advance(false);$("quizSkip").onclick=()=>advance(true);$("quizVoice").onclick=recordVoice;
   $("quizClose").onclick=async()=>{
     if(busy)return;
