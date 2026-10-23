@@ -66,7 +66,8 @@ function cleanInterviewQuestion(text) {
     try {
       let result;
       if(mode==="interview"){
-        const selected=window.UnscriptedDiary.sources(data.goal+" "+(data.answers.at(-1)?.answer||"")).sources.filter(source=>source.id!==data.entryId);
+        let selected=window.UnscriptedDiary.sources(data.goal+" "+(data.answers.at(-1)?.answer||"")).sources.filter(source=>source.id!==data.entryId);
+        if(data.goal.startsWith("Follow up on recent plans")){const recent=new Set(window.UnscriptedDiary.entries().filter(e=>e.kind!=="diaryChat"&&e.id!==data.entryId).slice(0,12).map(e=>e.id));selected=selected.filter(s=>recent.has(s.id));}
         const sources=selected.length<=10?selected:Array.from({length:10},(_,index)=>selected[Math.floor(index*(selected.length-1)/9)]);
         const profile=(localStorage.getItem("unscripted-personal-profile")||"")+"\n"+(localStorage.getItem("unscripted-reflection-profile")||"");
         result=await window.UnscriptedDiary.callAI("/interview",{goal:data.goal,answers:data.answers,sources,profile:profile.slice(0,mode==="interview"?700000:6000),now:new Date().toISOString()});
@@ -317,7 +318,7 @@ function cleanInterviewQuestion(text) {
   $("interviewFocus").onchange=()=>{$("interviewCustomArea").hidden=$("interviewFocus").value!=="custom";};
   $("interviewResume").onclick=()=>{$("interviewSetupModal").hidden=true;return open("interview");};
   $("interviewBegin").onclick=async()=>{
-    const goal=$("interviewFocus").value==="custom"?$("interviewCustomGoal").value.trim():$("interviewFocus").value;
+    const goal=$("interviewFocus").value.trim()||"Surprise me";
     if(!goal){window.UnscriptedDiary.toast("Add a goal, or choose Surprise me.");return;}
     const draft=load("interview");
     if((draft.answers.length||draft.question)&&!await window.UnscriptedConfirm("A new interview will replace the unfinished quiz. Answers already saved as a diary entry will stay.",{title:"Start a new interview?",confirmLabel:"Start new"}))return;

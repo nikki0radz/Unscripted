@@ -10,7 +10,7 @@
   const fmtDate = (iso, full = false) => new Date(iso).toLocaleString(undefined, full ? { weekday: "long", year: "numeric", month: "long", day: "numeric" } : { day: "numeric", month: "short", year: "numeric" });
   const fmtTime = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   const fmtDuration = (ms) => { const m = Math.floor((ms || 0) / 60000); const s = Math.floor(((ms || 0) % 60000) / 1000); return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0"); };
-  const audioTime = (ms) => ms >= 60000 ? Math.round(ms / 60000) + " min" : Math.max(1, Math.ceil((ms || 0) / 1000)) + " sec";
+  const audioTime = (ms) => ms >= 3600000 ? Math.floor(ms/3600000)+" hr "+Math.floor(ms%3600000/60000)+" min" : ms >= 60000 ? Math.round(ms / 60000) + " min" : Math.max(1, Math.ceil((ms || 0) / 1000)) + " sec";
   const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const make = (tag, className, text) => { const e = document.createElement(tag); if (className) e.className = className; if (text !== undefined) e.textContent = text; return e; };
   function showToast(message) { const toast = $("toast"); toast.textContent = message; toast.hidden = false; clearTimeout(state.toastTimeout); state.toastTimeout = setTimeout(() => toast.hidden = true, 4200); }
@@ -36,17 +36,19 @@
     state.view = view;
     for (const id of ["homeView", "entryView", "askView", "settingsView"]) $(id).hidden = id !== ({ home: "homeView", entry: "entryView", ask: "askView", settings: "settingsView" }[view]);
     $("navLibrary").classList.toggle("selected", view === "home" || view === "entry");
-    $("navAsk").classList.toggle("selected", view === "ask");
+    $("navAsk").classList.toggle("selected", view === "ask" || view === "chat");
     window.scrollTo({ top: 0, behavior: "instant" });
     if (view === "home") renderHome();
     if (view === "entry") renderEntry();
     if (view === "settings") renderSettings();
+    if(view==="ask")renderChatArchive();
+    if($("chatView"))$("chatView").hidden=view!=="chat";
   }
   function searchMatches(entry, query) { return [entry.title, entry.summary, (entry.tags || []).join(" "), transcriptText(entry)].join(" ").toLowerCase().includes(query.toLowerCase()); }
   function renderHome() {
     const list = $("entriesList"); list.replaceChildren();
-    $("entryCount").textContent = state.entries.length + (state.entries.length === 1 ? " entry" : " entries");
-    const last = state.entries[0]; $("continueLastButton").hidden = !last;
+    $("entryCount").textContent = state.entries.filter(e=>e.kind!=="diaryChat").length + (state.entries.filter(e=>e.kind!=="diaryChat").length === 1 ? " entry" : " entries");
+    const last = state.entries[0]; $("continueLastButton").hidden = true;
     if (last) $("continueLastButton").textContent = "↗ Continue “" + (last.title || "your last entry") + "”";
     const tags = [...new Set(state.entries.flatMap((e) => e.tags || []))].sort((a, b) => a.localeCompare(b));
     if (state.topic !== "All" && !tags.includes(state.topic)) state.topic = "All";
@@ -56,7 +58,9 @@
       chip.type = "button"; chip.onclick = () => { state.topic = topic; renderHome(); }; filters.append(chip);
     }
     const query = $("searchInput").value.trim();
-    const selected = state.entries.filter((e) => (state.topic === "All" || (e.tags || []).includes(state.topic)) && (!query || searchMatches(e, query)));
+    if(query){renderSearch(query);return;}
+    if($("searchStatus"))$("searchStatus").textContent="";
+    const selected = state.entries.filter((e) => e.kind!=="diaryChat" && (state.topic === "All" || (e.tags || []).includes(state.topic)) && (!query || searchMatches(e, query)));
     if (!selected.length) {
       const empty = make("div", "empty-state"); empty.append(make("strong", "", query || state.topic !== "All" ? "Nothing found, yet." : "Your thoughts will live here."), make("span", "", query || state.topic !== "All" ? "Try another search or category." : "Start recording and make this space your own.")); list.append(empty); return;
     }
@@ -64,17 +68,20 @@
       const card = make("button", "entry-card"); card.type = "button"; card.onclick = () => openEntry(entry.id);
       const top = make("div", "card-top"); top.append(make("span", "", fmtDate(entry.createdAt)), make("span", "", `${allParts(entry).length} part${allParts(entry).length === 1 ? "" : "s"} · ${audioTime(totalTime(entry))} audio`));
       if(entry.kind==="interview"){const badge=make("span","interview-badge","✦ Interview"+(entry.interview?.complete?"":" · in progress"));top.replaceChildren(badge,make("span","",fmtDate(entry.createdAt)));}
+      if(allClips(entry).some(c=>!c.transcript&&!c.transcriptionComplete)||entry.aiError||!entry.summary){card.classList.add("entry-pending");top.append(make("span","pending-label","⚠ "+(allClips(entry).some(c=>!c.transcript&&!c.transcriptionComplete)?"Transcription pending":"Summary pending")));}
       card.append(top, make("h3", "", entry.title || "Untitled thought"), make("p", "", entry.summary || (transcriptText(entry) ? transcriptText(entry).slice(0, 200) : "A thought worth keeping. Tap to add more or read it.")));
       const row = make("div", "tag-row"); for (const tag of (entry.tags || []).slice(0, 4)) row.append(make("span", "tag", tag)); card.append(row); list.append(card);
     }
   }
   function revokeUrls() { state.urls.forEach((url) => URL.revokeObjectURL(url)); state.urls = []; }
-  function openEntry(id) { state.selected = id; state.openTranscript = false; $("transcriptArea").hidden = true; $("transcriptToggle").setAttribute("aria-expanded", "false"); switchView("entry"); }
+  function openEntry(id) { state.searchTarget=null; state.selected = id; state.openTranscript = false; $("transcriptArea").hidden = true; $("transcriptToggle").setAttribute("aria-expanded", "false"); switchView("entry"); }
+  function interviewQuestionText(entry,part){return part.question||entry.interview?.answers?.find(x=>x.id===part.id)?.question||part.text?.match(/(?:Interview question|Question(?: \d+)?):\s*([^\n]+)/i)?.[1]||"Interview question";}
   function renderEntry() {
     const entry = currentEntry(); if (!entry) { switchView("home"); return; }
     document.querySelectorAll(".recording-player").forEach(player => player.dispose());
     revokeUrls();
     renderReflection(entry);
+    renderToneControls(entry);
     $("entryDate").textContent = fmtDate(entry.createdAt, true).toUpperCase();
     $("entryTitle").textContent = entry.title || "Untitled thought";
     $("interviewEntryStatus").hidden=entry.kind!=="interview";
@@ -87,10 +94,10 @@
     const container = $("entryParts"); container.replaceChildren();
     sortedParts(entry).filter(part => !part.reflectionAnswer).forEach((part, index) => {
       const box = make("div", "part-card"); const head = make("div", "part-head");
-      head.append(make("strong", "", part.type === "note" ? (part.interviewQuestion ? "✦ Interview question " : "✎ Written addition ") + (index + 1) : "🎙 Recording " + (index + 1)), make("small", "", fmtDate(part.createdAt) + " · " + fmtTime(part.createdAt)));
+      head.append(make("strong", "", part.type === "note" ? (part.interviewQuestion ? "✦ Interview question " : "✎ Written addition ") + (index + 1) : ""), make("small", "", fmtDate(part.createdAt) + " · " + fmtTime(part.createdAt)));
       box.append(head);
       if(part.interviewQuestion){
-        box.append(make("h3","reflection-question",part.question||"Interview question"));
+        box.append(make("h3","reflection-question",interviewQuestionText(entry,part)));
         if(part.clips?.length)box.append(window.UnscriptedRecordingPlayer.create(part.clips,getAudio,"interview answer"));
         const pending=(part.clips||[]).some(c=>!c.transcript&&!c.transcriptionComplete);
         if(pending){const retry=make("button","text-action","⚠ Continue transcription");retry.onclick=()=>processEntry(entry.id);box.append(retry);}
@@ -130,6 +137,7 @@
     $("transcriptArrow").textContent = state.openTranscript ? "⌃" : "⌄";
     $("transcriptArea").hidden = !state.openTranscript;
     if (state.openTranscript) renderTranscript(entry);
+    if(state.searchTarget)revealSearchTarget();
   }
   function renderTranscriptionProgress(entry) {
     let panel = $("transcriptionProgress");
@@ -367,7 +375,7 @@
     return entry.id;
   }
   function profileData() {
-    const keys=["unscripted-personal-profile","unscripted-reflection-profile","unscripted-know-quiz","unscripted-reflection-quiz","unscripted-interview-draft"];
+    const keys=["unscripted-summary-style","unscripted-personal-profile","unscripted-reflection-profile","unscripted-know-quiz","unscripted-reflection-quiz","unscripted-interview-draft"];
     return Object.fromEntries(keys.map(key=>[key,localStorage.getItem(key)||""]));
   }
   function restoreProfileData(profiles) {
@@ -443,14 +451,14 @@
         if(reflection.summary&&reflection.bulletPoints?.length)continue;
         const answer=reflection.answer||reflection.text||"";
         if(!answer.trim())continue;
-        const result=await callAI("/organize",{content:[{createdAt:reflection.createdAt,type:"reflection answer",text:"Question (context only): "+reflection.question+"\nYour answer: "+answer}],personalProfile:(localStorage.getItem("unscripted-personal-profile")||"").slice(0,4000)});
+        const result=await callAI("/organize",{content:[{createdAt:reflection.createdAt,type:"reflection answer",text:"Question (context only): "+(reflection.interviewQuestion?interviewQuestionText(entry,reflection):reflection.question)+"\nYour answer: "+answer}],style:summaryStyle(entry),personalProfile:(localStorage.getItem("unscripted-personal-profile")||"").slice(0,4000)});
         await persist(fresh=>{const part=fresh.parts.find(p=>p.id===reflection.id);if(part){part.summary=result.summary||"";part.bulletPoints=Array.isArray(result.bulletPoints)?result.bulletPoints:[];}});
         if(state.view==="entry"&&state.selected===id)renderEntry();
       }
       if(entry.kind==="interview"&&!entry.interview?.complete)return;
       const content = sortedParts(entry).filter(p=>!p.reflectionAnswer).map((part) => ({ createdAt: part.createdAt, type: part.type, text: part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || "").join(" ") })).filter((p) => p.text?.trim());
       if (!content.length) { if(allParts(entry).some(p=>p.reflectionAnswer&&p.summary))return; throw new Error("There's no transcribed or written text to summarise yet."); }
-      const data = await callAI("/organize", { content, existingTitle: entry.title, existingTags: entry.tags || [], personalProfile: (localStorage.getItem("unscripted-personal-profile") || "").slice(0,4000) });
+      const data = await callAI("/organize", { content, style:summaryStyle(entry), existingTitle: entry.title, existingTags: entry.tags || [], personalProfile: (localStorage.getItem("unscripted-personal-profile") || "").slice(0,4000) });
       const fresh = await transaction("entries", "readonly", store => store.get(id));
       if (!fresh) return;
       entry = fresh;
@@ -473,7 +481,7 @@
   function saveApiSettings() { const url = $("apiUrl").value.trim().replace(/\/+$/, ""); if (url && (!url.startsWith("https://") || !URL.canParse(url))) { notice("settingsStatus", "Use a full HTTPS backend address.", true); return; } localStorage.setItem("unscripted-api-url", url); sessionStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); if ($("rememberCode").checked) localStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); else localStorage.removeItem("unscripted-access-code"); notice("settingsStatus", activeAI() ? "Connection saved for this browser tab. New recordings will be transcribed automatically when you save them." : "Saved. Add a backend address and access code to enable AI."); }
   function chooseAskSources(question) {
     const words = question.toLowerCase().split(/\W+/).filter((x) => x.length > 3);
-    const entries = state.entries.filter((e) => transcriptText(e).trim());
+    const entries = state.entries.filter((e) => e.kind!=="diaryChat" && transcriptText(e).trim());
     const scored = entries.map((entry) => ({ entry, score: words.reduce((t, w) => t + (transcriptText(entry).toLowerCase().includes(w) ? 2 : 0) + ((entry.title + " " + (entry.tags || []).join(" ")).toLowerCase().includes(w) ? 4 : 0), 0) }));
     // Include both recent and older entries so historical comparisons have chronological coverage.
     scored.sort((a, b) => b.score - a.score);
@@ -495,23 +503,61 @@
     return { sources, truncated };
   }
   async function askDiary(event) {
-    event.preventDefault(); const question = $("askInput").value.trim(); if (!question) return;
-    if (!activeAI()) { notice("askStatus", "Connect your private AI backend in Settings first.", true); return; }
-    const { sources, truncated } = chooseAskSources(question);
-    if (!sources.length) { notice("askStatus", "Add and transcribe some recordings (or written thoughts) before asking your diary.", true); return; }
-    $("askSubmit").disabled = true; $("askResult").hidden = true; notice("askStatus", "Reading your recorded thoughts...");
-    try {
-      const result = await callAI("/ask", { question, sources, truncated });
-      notice("askStatus", truncated ? "Some source entries or transcript text were excluded due to context limits. Treat this as a partial-history analysis." : "");
-      const target = $("askResult"); target.replaceChildren(); target.append(make("div", "", result.answer || "No answer returned."));
-      const heading = make("h3", "", "Sources from your diary"); heading.style.cssText = "font-size:15px;margin:20px 0 8px"; target.append(heading);
-      const references = (Array.isArray(result.sourceIds) ? result.sourceIds : []).filter((id) => sources.some((x) => x.id === id));
-      if (!references.length) target.append(make("div", "tiny", "No specific entries cited. Treat this analysis cautiously."));
-      for (const id of references) { const entry = state.entries.find((e) => e.id === id); if (!entry) continue; const b = make("button", "source-link", fmtDate(entry.createdAt) + " · " + entry.title); b.type = "button"; b.onclick = () => openEntry(id); target.append(b); }
-      target.hidden = false;
-    } catch (error) { notice("askStatus", "Could not analyse diary: " + error.message, true); }
-    finally { $("askSubmit").disabled = false; }
+    event.preventDefault();if(chatBusy){showToast("Wait for your diary to finish replying first.");return;}const question=$("askInput").value.trim();if(!question)return;
+    if(!activeAI()){notice("askStatus","Connect AI in Settings first.",true);return;}
+    const now=new Date().toISOString();const chat={id:uid(),kind:"diaryChat",title:question.slice(0,120),createdAt:now,updatedAt:now,parts:[],messages:[]};
+    await saveEntry(chat);await refreshEntries();activeChatId=chat.id;$("askInput").value="";openChat(chat.id);await sendChat(question);
   }
+  const styleDefaults={perspective:"you",friendliness:"very friendly",length:"medium",emojis:"some",gossip:false,blunt:false};
+  function summaryStyle(entry){let saved={};try{saved=JSON.parse(localStorage.getItem("unscripted-summary-style")||"{}");}catch{}return {...styleDefaults,...saved,...entry?.summaryStyle};}
+  function toneControls(entry){
+    const wrap=make("div","tone-controls"),style=summaryStyle(entry);
+    const fields={perspective:["I","you","third person"],friendliness:["neutral","warm","very friendly","casual like a friend"],length:["short","medium","detailed"],emojis:["none","some","lots"]};
+    const labels={perspective:"Voice",friendliness:"Tone",length:"Length",emojis:"Emojis"};
+    const persist=async()=>{try{if(entry){const fresh=await transaction("entries","readonly",s=>s.get(entry.id));if(!fresh)return;fresh.summaryStyle={...style};await saveEntry(fresh);await refreshEntries();}else {localStorage.setItem("unscripted-summary-style",JSON.stringify(style));window.dispatchEvent(new Event("unscripted-change"));}showToast("Style saved for the next summary");}catch(e){showToast("Could not save style: "+e.message);}};
+    for(const [key,options] of Object.entries(fields)){const label=make("label","",labels[key]),select=make("select");for(const value of options){const o=make("option","",value);o.value=value;select.append(o);}select.value=style[key];select.onchange=()=>{style[key]=select.value;persist();};label.append(select);wrap.append(label);}
+    for(const [key,labelText] of [["gossip","Gossipy / chatty"],["blunt","Blunt & direct"]]){const label=make("label","checkbox-label"),input=make("input");input.type="checkbox";input.checked=!!style[key];input.onchange=()=>{style[key]=input.checked;persist();};label.append(input,document.createTextNode(labelText));wrap.append(label);}
+    if(entry){const b=make("button","button-soft","Apply to this entry ↻");b.type="button";b.onclick=async()=>{if(state.processing.has(entry.id)){showToast("Wait for transcription to finish first.");return;}await persist();const fresh=await transaction("entries","readonly",s=>s.get(entry.id));if(!fresh)return;fresh.summaryEdited=false;for(const part of fresh.parts||[])if(part.reflectionAnswer||part.interviewQuestion){part.summary="";part.bulletPoints=[];}await saveEntry(fresh);await refreshEntries();processEntry(entry.id);};wrap.append(b,make("p","tiny","Changing these options keeps your current summary. Apply when you want a new version."));}
+    return wrap;
+  }
+  function renderToneControls(entry){let panel=$("entryToneControls");if(!panel){panel=make("details","entry-block tone-panel");panel.id="entryToneControls";$("deleteEntryButton").before(panel);}const expanded=panel.open;panel.replaceChildren(make("summary","","✦ Summary style"),toneControls(entry));panel.open=expanded;}
+  let searchRevision=0,semanticResults=null,activeChatId=null,chatBusy=false;
+  function searchableParts(entry){return sortedParts(entry).map(part=>({part,text:part.type==="note"?((part.interviewQuestion||part.reflectionAnswer)?(part.answer||part.text?.split(/Your answer:\s*/i)[1]||""):(part.text||"")):(part.clips||[]).map(c=>c.transcript||"").join("\n\n")}));}
+  function markText(el,text,ranges){let at=0;for(const r of ranges.sort((a,b)=>a.start-b.start)){if(r.start<at)continue;el.append(document.createTextNode(text.slice(at,r.start)));el.append(make("mark","",text.slice(r.start,r.end)));at=r.end;}el.append(document.createTextNode(text.slice(at)));}
+  function literalHits(query){
+    const hits=[],words=query.toLocaleLowerCase().match(/[\p{L}\p{N}']+/gu)||[];
+    for(const entry of state.entries.filter(e=>e.kind!=="diaryChat"&&(state.topic==="All"||(e.tags||[]).includes(state.topic))))for(const {part,text} of searchableParts(entry)){
+      const lower=text.toLocaleLowerCase();let pos=0,found=false;
+      while(query&&((pos=lower.indexOf(query.toLocaleLowerCase(),pos))>=0)){hits.push({entryId:entry.id,partId:part.id,start:pos,end:pos+query.length,text,score:100});pos+=Math.max(1,query.length);found=true;}
+      if(!found&&words.length>1){let offset=0;for(const sentence of text.split(/(?<=[.!?\n])\s+/)){const ranges=[];for(const word of new Set(words)){let at=sentence.toLocaleLowerCase().indexOf(word);if(at>=0)ranges.push({start:offset+at,end:offset+at+word.length});}if(ranges.length>=Math.max(2,Math.ceil(new Set(words).size*.5)))hits.push({entryId:entry.id,partId:part.id,start:ranges[0].start,end:ranges[0].end,text,ranges,score:ranges.length});offset+=sentence.length;while(/\s/.test(text[offset]||"")&&offset<text.length)offset++;}}
+    }return hits.sort((a,b)=>b.score-a.score);
+  }
+  function renderSearch(query){const target=$("entriesList");target.replaceChildren();const hits=semanticResults?.query===query?semanticResults.hits:literalHits(query);$("searchStatus").textContent=hits.length+" matches";
+    if(!hits.length){target.append(make("p","tiny","No transcript matches. Try fewer words or Search by meaning."));return;}
+    for(const hit of hits){const entry=state.entries.find(e=>e.id===hit.entryId);if(!entry)continue;const b=make("button","entry-card search-hit");b.type="button";b.append(make("small","",fmtDate(entry.createdAt)+" · "+entry.title));const snippet=make("div","search-snippet"),start=Math.max(0,hit.start-25),end=Math.min(hit.text.length,hit.end+130),text=hit.text.slice(start,end);const ranges=(hit.ranges||[{start:hit.start,end:hit.end}]).filter(r=>r.end>start&&r.start<end).map(r=>({start:Math.max(0,r.start-start),end:Math.min(text.length,r.end-start)}));markText(snippet,text,ranges);b.append(snippet);b.onclick=()=>{openEntry(entry.id);state.searchTarget=hit;state.openTranscript=true;renderEntry();};target.append(b);}
+  }
+  function revealSearchTarget(){const hit=state.searchTarget;if(!hit)return;const entry=currentEntry(),part=allParts(entry).find(p=>p.id===hit.partId);if(!part)return;$("transcriptArea").hidden=false;$("transcriptToggle").setAttribute("aria-expanded","true");const target=$("transcriptArea");target.replaceChildren();let focus;
+    for(const item of searchableParts(entry)){const section=make("section","transcript-part");section.append(make("div","transcript-head",fmtDate(item.part.createdAt)+" · "+fmtTime(item.part.createdAt)));const body=make("p");if(item.part.id===part.id){markText(body,item.text,hit.ranges||[{start:hit.start,end:hit.end}]);focus=body.querySelector("mark");}else body.textContent=item.text;section.append(body);target.append(section);}focus?.scrollIntoView({behavior:"smooth",block:"center"});
+  }
+  async function searchByMeaning(){const query=$("searchInput").value.trim();if(!query)return;if(!activeAI()){showToast("Connect AI to search by meaning.");return;}const revision=++searchRevision;const hits=[],chunks=[];
+    for(const entry of state.entries.filter(e=>e.kind!=="diaryChat"&&(state.topic==="All"||(e.tags||[]).includes(state.topic))))for(const {part,text} of searchableParts(entry)){for(let start=0;start<text.length;start+=1300)chunks.push({id:String(chunks.length),entryId:entry.id,partId:part.id,start,text:text.slice(start,start+1500),full:text});}
+    $("semanticSearch").disabled=true;try{for(let i=0;i<chunks.length;i+=20){if(revision!==searchRevision)return;$("searchStatus").textContent="Searching excerpts "+Math.min(i+20,chunks.length)+" / "+chunks.length;const batch=chunks.slice(i,i+20),result=await callAI("/search",{query,excerpts:batch.map(c=>({id:c.id,text:c.text}))});if(revision!==searchRevision)return;for(const match of result.matches||[]){const c=batch.find(c=>c.id===match.id);if(!c||typeof match.quote!=="string")continue;const local=c.text.toLowerCase().indexOf(match.quote.toLowerCase());if(local<0||!match.quote.trim())continue;const start=c.start+local,end=start+match.quote.length;if(hits.some(h=>h.partId===c.partId&&Math.abs(h.start-start)<120))continue;hits.push({entryId:c.entryId,partId:c.partId,text:c.full,start,end});}semanticResults={query,hits:[...hits]};renderSearch(query);}}catch(e){$("searchStatus").textContent="Search paused: "+e.message+". Matches found so far are shown.";}finally{$("semanticSearch").disabled=false;}}
+  function cleanAnswer(text,sources){let answer=String(text||"");for(const source of sources){answer=answer.split("["+source.id+"]").join("");answer=answer.split(source.id).join("");}answer=answer.replace(/\s*[([]\s*(?:sources?\s*:?\s*)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*[)\]]/gi,"");return answer.replace(/\(\s*(?:source\s*:?)?\s*\)/gi,"").replace(/\[\s*\]/g,"").replace(/ +([.,!?])/g,"$1").replace(/ {2,}/g," ").trim();}
+  function relativeDate(iso){const days=Math.floor((Date.now()-new Date(iso).getTime())/86400000);if(days===0)return "Today";if(days===1)return "Yesterday";if(days<7)return days+" days ago";if(days<28)return Math.floor(days/7)+" weeks ago";return new Date(iso).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"});}
+  function openChat(id){activeChatId=id;switchView("chat");renderChat();}
+  function renderChatArchive(){const target=$("chatArchive");if(!target)return;target.replaceChildren();const chats=state.entries.filter(e=>e.kind==="diaryChat");if(!chats.length)return;target.append(make("h3","","Your chats"));for(const chat of chats){const b=make("button","entry-card chat-archive-row",chat.title+" · "+relativeDate(chat.createdAt));b.type="button";b.onclick=()=>openChat(chat.id);target.append(b);}}
+  function renderChat(){const chat=state.entries.find(e=>e.id===activeChatId);if(!chat)return;$("chatTitle").textContent=chat.title;const target=$("chatMessages");target.replaceChildren();for(const m of chat.messages||[]){const bubble=make("div","chat-bubble "+m.role);bubble.append(make("div","chat-text",m.content));for(const id of m.sourceIds||[]){const entry=state.entries.find(e=>e.id===id);if(!entry)continue;const b=make("button","source-link",relativeDate(entry.createdAt)+" · "+entry.title);b.type="button";b.onclick=()=>openEntry(id);bubble.append(b);}target.append(bubble);}$("chatContextNote").textContent=chat.truncated?"Based on selected diary excerpts; some history falls outside the context available for this reply.":"Based on the diary excerpts available when each reply was written.";}
+  async function sendChat(question,retry=false){if(chatBusy)return;const chat=state.entries.find(e=>e.id===activeChatId);if(!chat)return;chatBusy=true;$("chatSend").disabled=true;$("deleteChat").disabled=true;try{if(!retry){chat.messages.push({role:"user",content:question});await saveEntry(chat);}renderChat();notice("chatStatus","Thinking…");const history=chat.messages.slice(-16,-1).map(m=>({role:m.role,content:m.content}));const {sources,truncated}=chooseAskSources(chat.messages.slice(-4).map(m=>m.content).join(" "));if(!sources.length)throw Error("Transcribe a recording first so your diary has something to draw on.");const result=await callAI("/ask",{question,sources,truncated,history,now:new Date().toISOString(),personalProfile:localStorage.getItem("unscripted-personal-profile")||"",style:summaryStyle(null)});chat.messages.push({role:"assistant",content:cleanAnswer(result.answer,sources),sourceIds:(result.sourceIds||[]).filter(id=>sources.some(s=>s.id===id)),createdAt:new Date().toISOString()});chat.truncated=truncated;await saveEntry(chat);await refreshEntries();renderChat();notice("chatStatus","");}catch(e){notice("chatStatus","Could not reply: "+e.message,true);const b=make("button","button-soft","Retry reply");b.type="button";b.onclick=()=>sendChat(question,true);$("chatStatus").append(b);}finally{chatBusy=false;$("chatSend").disabled=false;$("deleteChat").disabled=false;}}
+  function bindEnhancements(){
+    $("searchButton").onclick=()=>{semanticResults=null;searchRevision++;renderHome();if($("searchInput").value.trim().split(/\s+/).length>=4&&activeAI())searchByMeaning();};$("searchInput").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("searchButton").click();}};$("semanticSearch").onclick=searchByMeaning;
+    $("interviewTopicPicker").onclick=()=>{const input=$("interviewFocus");input.focus();try{input.showPicker?.();}catch{}};
+    $("followUpButton").onclick=()=>{$("interviewStartButton").click();if(!$("interviewSetupModal").hidden){$("interviewFocus").value="Follow up on recent plans: ask about a specific stated intention, conversation or action in recent diary entries; ask what happened without assuming it was completed. If no plans are evidenced ask what they would like to follow up on.";$("interviewBegin").click();}};
+    $("chatBack").onclick=()=>switchView("ask");$("chatForm").onsubmit=e=>{e.preventDefault();const q=$("chatInput").value.trim();if(!q)return;$("chatInput").value="";sendChat(q);};
+    $("deleteChat").onclick=async()=>{if(chatBusy||!activeChatId)return;if(!await window.UnscriptedConfirm("Delete this saved conversation? Older backups may still contain it.",{title:"Delete chat?",confirmLabel:"Delete chat",danger:true}))return;await transaction("entries","readwrite",s=>s.delete(activeChatId));await refreshEntries();window.dispatchEvent(new Event("unscripted-change"));switchView("ask");};
+    $("quizAnswerArea").prepend($("quizVoice"));$("quizTypedAnswer").hidden=false;$("quizAnswer").placeholder="Or type your answer here…";$("quizAnswer").rows=3;
+    $("defaultToneControls").replaceChildren(toneControls(null));
+  }
+
   const summaryViews = new Map();
   function summarySwitch(key, summary, points, onRefresh) {
     const wrap = make("div", "summary-switch");
@@ -658,14 +704,14 @@
   function chooseWheel(e){const rect=$("colourWheel").getBoundingClientRect();const dx=e.clientX-(rect.left+rect.width/2),dy=e.clientY-(rect.top+rect.height/2),radius=rect.width/2;accent.h=(Math.atan2(dy,dx)*180/Math.PI+360)%360;accent.s=Math.min(Math.hypot(dx,dy)/(radius*.92),1);updatePicker();}
   function bindEvents() {
     $("homeLogo").onclick=()=>switchView("home");$("navLibrary").onclick=()=>switchView("home");$("navAsk").onclick=()=>switchView("ask");$("settingsButton").onclick=()=>switchView("settings");$("settingsBack").onclick=()=>switchView("home");$("entryBack").onclick=()=>switchView("home");
-    $("startNewButton").onclick=()=>startRecording(null);$("navRecord").onclick=()=>startRecording(null);$("continueLastButton").onclick=()=>{if(state.entries[0])startRecording(state.entries[0].id);};$("searchInput").oninput=renderHome;
+    $("startNewButton").onclick=()=>startRecording(null);$("navRecord").onclick=()=>startRecording(null);$("continueLastButton").onclick=()=>{if(state.entries[0])startRecording(state.entries[0].id);};$("searchInput").oninput=()=>{searchRevision++;semanticResults=null;renderHome();};
     $("cancelRecordingButton").onclick=requestCancelRecording;$("keepRecordingButton").onclick=()=>{$("cancelRecordingModal").hidden=true;};$("confirmCancelRecording").onclick=cancelRecording;
     $("pauseRecording").onclick=togglePause;$("finishRecording").onclick=stopRecording;
     $("addToEntryButton").onclick=openChoice;$("choiceClose").onclick=closeChoice;$("choiceRecord").onclick=()=>{const id=state.selected;closeChoice();startRecording(id);};$("choiceWrite").onclick=()=>{const id=state.selected;closeChoice();writeThought(id);};$("addNoteButton").onclick=()=>writeThought(state.selected);
     $("editTitleButton").onclick=()=>{const entry=currentEntry();if(entry)openEditor("Give it a title",entry.title,async value=>{entry.title=value||"Untitled thought";entry.titleEdited=true;await saveEntry(entry);await refreshEntries();renderEntry();});};
     $("editSummaryButton").onclick=()=>{const entry=currentEntry();if(entry)openEditor("Edit summary",entry.summary||"",async value=>{entry.summary=value;entry.summaryEdited=true;await saveEntry(entry);await refreshEntries();renderEntry();});};
     $("addTopicButton").onclick=()=>{const entry=currentEntry();if(entry)openEditor("Edit topics",(entry.tags||[]).join(", "),async value=>{entry.tags=[...new Set(value.split(",").map(x=>x.trim()).filter(Boolean))].slice(0,15);entry.userTags=entry.tags.slice();await saveEntry(entry);await refreshEntries();renderEntry();},"Separate topics with commas");};
-    $("transcriptToggle").onclick=()=>{state.openTranscript=!state.openTranscript;renderEntry();};$("transcribeButton").onclick=()=>{const entry=currentEntry();if(entry)processEntry(entry.id);};$("deleteEntryButton").onclick=deleteEntry;
+    $("transcriptToggle").onclick=()=>{state.searchTarget=null;state.openTranscript=!state.openTranscript;renderEntry();};$("transcribeButton").onclick=()=>{const entry=currentEntry();if(entry)processEntry(entry.id);};$("deleteEntryButton").onclick=deleteEntry;
     $("closeEditor").onclick=closeEditor;$("editorCancel").onclick=closeEditor;$("editorSave").onclick=submitEditor;$("editorModal").onclick=(e)=>{if(e.target===$("editorModal"))closeEditor();};
     $("choiceModal").onclick=(e)=>{if(e.target===$("choiceModal"))closeChoice();};
     $("reflectButton").onclick=()=>{const entry=currentEntry();if(entry)window.UnscriptedPerspective.open(entry.id);};
@@ -682,7 +728,7 @@
     document.addEventListener("visibilitychange",()=>{if(document.hidden && state.recording && !state.recording.paused)flushClip(state.recording);});
   }
   async function init() {
-    bindEvents(); applyAccent(localStorage.getItem("unscripted-accent") || "#b8d2ab");
+    bindEvents(); bindEnhancements(); applyAccent(localStorage.getItem("unscripted-accent") || "#b8d2ab");
     try { state.db = await getDb(); await refreshEntries(); renderHome(); }
     catch (error) { showToast("Private storage unavailable: " + error.message); $("startNewButton").disabled=true; $("navRecord").disabled=true; }
     if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register("./service-worker.js").catch(()=>{});
