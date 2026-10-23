@@ -1,4 +1,4 @@
-import {FOCUSED_ASK_RULES,recurringEvidence} from "./ask-focus.js";
+import {FOCUSED_ASK_RULES,recurringEvidence,replyPlan,responseRules,enforceReplyContract,standoutEvidence} from "./ask-focus.js";
 import {styleInstructions,searchExcerpts} from "./diary-style.js";
 import {interview} from "./interview.js";
 import {passkeys} from "./passkeys.js";
@@ -76,9 +76,19 @@ async function ask(body, env) {
   if (!question || !sources.length) throw new Error("A question and diary sources are required.");
   const combined = sources.map(x => "ENTRY ID: " + x.id + "\nDATE: " + x.date + "\n" + x.text.slice(0, 16000)).join("\n\n---\n\n");
   if (combined.length > 140000) throw new Error("Too much diary text for one request.");
-  const patterns=await recurringEvidence(question,sources,(instructions,input)=>openAIText(env,instructions,input));
-  const raw = await openAIText(env, FOCUSED_ASK_RULES+"\n"+ASK_INSTRUCTIONS+"\n"+styleInstructions(body.style,"chat")+"\nFor this chat reply, always speak directly to the owner as a friend; narrative voice and summary-length options apply only to summaries, not chats. Choose the right answer length for the question. There is no required bullet list or concluding paragraph.", "VERIFIED RECURRENCE EVIDENCE: "+JSON.stringify(patterns)+"\nCURRENT DATE: "+(typeof body.now==="string"?body.now:"")+"\nCOMMUNICATION PREFERENCES: "+(typeof body.personalProfile==="string"?body.personalProfile.slice(0,4000):"")+"\nCONVERSATION: "+JSON.stringify(Array.isArray(body.history)?body.history.slice(-16).filter(m=>["user","assistant"].includes(m.role)&&typeof m.content==="string").map(m=>({role:m.role,content:m.content.slice(0,10000)})):[])+"\nQUESTION: " + question + "\n\nARCHIVE MAY BE PARTIAL: " + (body.truncated ? "YES" : "NO") + "\n\nDIARY SOURCES:\n" + combined);
-  const obj = parseJSON(raw);
+  const plan=replyPlan(question,Array.isArray(body.history)?body.history:[]);
+  const patterns=await recurringEvidence(plan.analysisQuestion,sources,(instructions,input)=>openAIText(env,instructions,input));
+  const focused=standoutEvidence(plan,patterns,sources);
+  if(focused.noStandout){
+    const person=focused.patterns.people[0];
+    const answer="I’m not seeing one clear recurring theme that stands out in the excerpts available."+(person&&person.name.split(/\s+/).length<=5?" "+person.name+" comes up across several days, but that doesn’t by itself point to one repeated concern.":"");
+    return {answer,sourceIds:[]};
+  }
+  const replySources=focused.sources;
+  const replyDiary=plan.kind==="standout"&&patterns?replySources.map(s=>"ENTRY ID: "+s.id+"\nDATE: "+s.date+"\n"+s.text).join("\n\n"):combined;
+  const raw = await openAIText(env, FOCUSED_ASK_RULES+"\n"+ASK_INSTRUCTIONS+"\n"+styleInstructions(body.style,"chat")+"\nFor this chat reply, always speak directly to the owner as a friend; narrative voice and summary-length options apply only to summaries, not chats. Choose the right answer length for the question. There is no required bullet list or concluding paragraph.\n"+responseRules(plan), "REPLY PLAN: "+JSON.stringify(plan)+"\nVERIFIED RECURRENCE EVIDENCE: "+JSON.stringify(focused.patterns)+"\nCURRENT DATE: "+(typeof body.now==="string"?body.now:"")+"\nCOMMUNICATION PREFERENCES: "+(typeof body.personalProfile==="string"?body.personalProfile.slice(0,4000):"")+"\nCONVERSATION: "+JSON.stringify(Array.isArray(body.history)?body.history.slice(-16).filter(m=>(plan.kind!=="standout"||m.role==="user")&&["user","assistant"].includes(m.role)&&typeof m.content==="string").map(m=>({role:m.role,content:m.content.slice(0,10000)})):[])+"\nQUESTION: " + question + "\n\nARCHIVE MAY BE PARTIAL: " + (body.truncated ? "YES" : "NO") + "\n\nDIARY SOURCES:\n" + replyDiary);
+  let obj = parseJSON(raw);
+  obj=await enforceReplyContract(obj,{plan,question,patterns:focused.patterns,sources:replySources},(instructions,input)=>openAIText(env,instructions,input));
   if (typeof obj.answer !== "string" || !Array.isArray(obj.sourceIds)) throw new Error("AI answer had an unexpected format.");
   const validIds = new Set(sources.map(x => x.id));
   return { answer: obj.answer.slice(0, 10000), sourceIds: obj.sourceIds.filter(id => validIds.has(id)).slice(0, 16) };
