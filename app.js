@@ -381,10 +381,10 @@
   function restoreProfileData(profiles) {
     if(!profiles||typeof profiles!=="object")return;
     for(const key of Object.keys(profileData())){
-      const value=profiles[key];if(typeof value!=="string"||value.length>60000)continue;
+      const value=profiles[key];if(typeof value!=="string"||value.length>(key==="unscripted-interview-draft"?12000000:60000))continue;
       if(key.endsWith("-quiz")||key==="unscripted-interview-draft"){
         let parsed;try{parsed=JSON.parse(value);}catch{continue;}
-        if(!Array.isArray(parsed.answers)||parsed.answers.length>6||parsed.answers.some(x=>typeof x.question!=="string"||typeof x.answer!=="string"))continue;
+        if(!Array.isArray(parsed.answers)||(key!=="unscripted-interview-draft"&&parsed.answers.length>6)||parsed.answers.some(x=>typeof x.question!=="string"||typeof x.answer!=="string"))continue;
       }
       localStorage.setItem(key,value);
     }

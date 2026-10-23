@@ -7,7 +7,7 @@ const result=await interview({goal:"Build self confidence",answers:[],sources,pr
   return JSON.stringify({question:"What has changed since your July entry about confidence at work?",sourceIds:["past","invented"]});
 });
 assert.equal(received.goal,"Build self confidence");assert.deepEqual(result.sourceIds,[]);assert.deepEqual(received.sources,[]);assert.equal(received.profile,"");
-await assert.rejects(()=>interview({answers:Array(6).fill({question:"Q?",answer:"A"})},async()=>"{}"));
+await interview({answers:Array(8).fill({question:"Q?",answer:"A"})},async()=>JSON.stringify({question:"What would you invent?",sourceIds:[]}));
 await assert.rejects(()=>interview({},async()=>JSON.stringify({question:"Why? What next?"})));
 await assert.rejects(()=>interview({answers:[{question:"What matters to you?",answer:"Fairness"}]},async()=>JSON.stringify({question:"What matters to you?"})));
 console.log("Passed: goal-aware interview context, grounded history references, skipped-question boundaries, question limits and duplicate rejection.");
@@ -46,3 +46,13 @@ await interview({mode:"follow-up",goal:"Follow up on recent plans",sources},asyn
  assert.equal(JSON.parse(input).sources[0].id,"past");assert.match(instructions,/separate Follow up feature/);return JSON.stringify({question:"How did that conversation go?",sourceIds:["past"]});
 });
 console.log("Passed: curiosity interviews ignore archive/profile data across categories, while explicit Follow up keeps grounded sources.");
+
+for(const continuation of ["fresh","follow-up"]){
+ await interview({goal:"Moral dilemmas",continuation,answers:[{question:dilemma.scenario,answer:"I would divert it to save more people."}]},async(instructions,input)=>{
+  if(continuation==="follow-up"){
+   assert.match(instructions,/SAME idea or dilemma/);assert.equal(JSON.parse(input).continuation,"follow-up");return JSON.stringify({question:"Would your choice change if the one person were someone you loved?",sourceIds:[]});
+  }
+  return JSON.stringify({...dilemma,scenario:"Imagine a friend tells you a secret that could unfairly harm a colleague."});
+ });
+}
+console.log("Passed: optional continuation beyond six answers and same-answer follow-ups to ethical dilemmas.");
