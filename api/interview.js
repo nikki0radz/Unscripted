@@ -1,3 +1,4 @@
+import {styleInstructions} from "./diary-style.js";
 function cleanInterviewQuestion(text) {
   const uuid="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
   return String(text||"").replace(new RegExp("\\s*[([]\\s*(?:sources?\\s*:?\\s*)?"+uuid+"\\s*[)\\]]","gi"),"").replace(new RegExp("\\b(?:source\\s*:?\\s*)?"+uuid+"\\b","gi"),"").replace(/\s+([,.;?!])/g,"$1").replace(/ {2,}/g," ").trim();
@@ -21,6 +22,7 @@ async function ethicalDilemma(goal,previous,generate) {
   throw Error("Could not create a clear ethical dilemma. Tap Refresh question to try again.");
 }
 export async function interview(body,generate) {
+  const originalGenerate=generate;generate=(instructions,input)=>originalGenerate(instructions+"\n"+styleInstructions(body.style,"question"),input);
   const previous=Array.isArray(body.answers)?body.answers.slice(-12).map(x=>({question:typeof x.question==="string"?x.question.slice(0,600):"",answer:typeof x.answer==="string"?x.answer.slice(0,6000):"",skipped:!!x.skipped})):[];
   const continuation=body.continuation==="follow-up"?"follow-up":"fresh";
   const goal=typeof body.goal==="string"?body.goal.slice(0,200):"A mix of questions";

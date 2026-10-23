@@ -14,7 +14,8 @@ controller.reset(true);ctx.window.UnscriptedDiary.callAI=()=>new Promise(resolve
 ctx.window.UnscriptedDiary.callAI=async()=>{throw Error('Offline')};await el('button').onclick();assert.match(el('panel').textContent,/Offline/);assert.equal(el('button').disabled,false);assert.equal(el('button').textContent,'Try explanation again');
 const source=fs.readFileSync('api/worker.js','utf8');const fn=source.slice(source.indexOf('async function clarifyQuestion'),source.indexOf('async function ask'));
 let instructions;
-const clarify=new Function('parseJSON','openAIText',fn+';return clarifyQuestion')(JSON.parse,async(env,prompt,input)=>{instructions=prompt;assert(JSON.parse(input).question);return JSON.stringify(result)});
+const {styleInstructions}=await import('../api/diary-style.js');
+const clarify=new Function('styleInstructions','parseJSON','openAIText',fn+';return clarifyQuestion')(styleInstructions,JSON.parse,async(env,prompt,input)=>{instructions=prompt;assert(JSON.parse(input).question);return JSON.stringify(result)});
 await assert.rejects(clarify({question:''},{}));assert.deepEqual(await clarify({question:'What values?'},{}),result);assert.match(instructions,/never childish or patronising/);assert.match(instructions,/hypothetical/);
 console.log('Passed: plain-language explanation, cached toggle, stale response protection, retry after failure, input validation and hypothetical-example prompt.');
 })().catch(e=>{console.error(e);process.exit(1)});
