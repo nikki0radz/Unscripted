@@ -109,6 +109,9 @@
     $("transcribeButton").disabled = busy; $("summaryActionLabel").innerHTML = busy ? "Processing…" : clips.some(c => !c.transcript && !c.transcriptionComplete) ? "Continue<br>transcription" : "Refresh<br>summary";
     notice("entryStatus", busy ? (clips.some(c => !c.transcript && !c.transcriptionComplete) ? "" : "Refreshing summary…") : entry.aiError ? entry.aiError : (!activeAI() && clips.some((c) => !c.transcript) ? "Audio saved. Connect your private AI backend in Settings to transcribe it automatically." : ""), !!entry.aiError);
     $("entrySummary").textContent = entry.summary || (transcriptText(entry) ? "No summary yet. You can write one yourself or connect AI." : "No summary yet. Your original audio is saved; nothing has been invented.");
+    let mainSummary=$("entrySummaryViews");if(!mainSummary){mainSummary=make("div");mainSummary.id="entrySummaryViews";$("entrySummary").after(mainSummary);}
+    $("entrySummary").hidden=true;mainSummary.replaceChildren(summarySwitch(entry.id,entry.summary,entry.bulletPoints,()=>processEntry(entry.id)));
+
     const tags = $("entryTags"); tags.replaceChildren();
     if (!(entry.tags || []).length) tags.append(make("span", "muted", "No topics yet."));
     else (entry.tags || []).forEach((tag) => tags.append(make("span", "tag", tag)));
@@ -123,7 +126,7 @@
       $("entryParts").after(panel);
     }
     panel.replaceChildren();
-    const clips = allParts(entry).filter(p => p.type === "recording").flatMap(p => p.clips || []);
+    const clips = allParts(entry).filter(p => p.type === "recording" || p.reflectionAnswer).flatMap(p => p.clips || []);
     const done = clips.filter(c => c.transcript || c.transcriptionComplete).length;
     panel.hidden = !clips.length || done === clips.length;
     if (panel.hidden) return;
@@ -151,7 +154,7 @@
   }
   function renderTranscript(entry) {
     const target = $("transcriptArea"); target.replaceChildren();
-    for (const part of sortedParts(entry)) {
+    for (const part of sortedParts(entry).filter(p=>!p.reflectionAnswer)) {
       const div = make("div", "transcript-part"); div.append(make("div", "transcript-head", (part.reflectionAnswer ? "Reflection · question & answer" : part.type === "note" ? "Written note" : "Voice recording") + " · " + fmtDate(part.createdAt) + " at " + fmtTime(part.createdAt)));
       const body = part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || (c.transcriptionComplete ? "[No speech detected]" : "[Audio waiting for transcription]")).join("\n\n");
       div.append(make("p", "", body || "No transcript yet.")); target.append(div);
@@ -363,6 +366,7 @@
     } finally { clearTimeout(timeout); }
   }
   async function processEntry(id) {
+    if (window.UnscriptedPerspective?.recording()) { showToast("Finish your reflection recording first."); return; }
     if (state.processing.has(id)) return;
     state.pauseTranscription.delete(id);
     state.processing.add(id); if (state.view === "entry" && state.selected === id) renderEntry();
@@ -378,7 +382,7 @@
         if (index >= 0) state.entries[index] = fresh;
       };
       for (const part of sortedParts(entry)) {
-        if (part.type !== "recording") continue;
+        if (part.type !== "recording" && !part.reflectionAnswer) continue;
         for (const clip of part.clips || []) {
           if (state.pauseTranscription.has(id)) return;
           if (clip.transcript || clip.transcriptionComplete) continue;
@@ -394,14 +398,25 @@
           await persist(fresh => {
             const saved = allClips(fresh).find(c => c.id === clip.id);
             if (saved) { saved.transcript = clip.transcript; saved.transcriptionComplete = true; }
+            const reflection=allParts(fresh).find(p=>p.reflectionAnswer&&(p.clips||[]).some(c=>c.id===clip.id));
+            if(reflection&&!reflection.answerEdited){reflection.answer=[reflection.typedAnswer||"",...(reflection.clips||[]).map(c=>c.transcript||"")].filter(Boolean).join("\n\n");reflection.text="Reflection question: "+reflection.question+"\nYour answer: "+reflection.answer;}
             fresh.aiError = "";
           }); // persist each completed clip without overwriting concurrent edits
           if (state.view === "entry" && state.selected === id) renderEntry();
         }
       }
       if (state.pauseTranscription.has(id)) return;
-      const content = sortedParts(entry).map((part) => ({ createdAt: part.createdAt, type: part.type, text: part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || "").join(" ") })).filter((p) => p.text?.trim());
-      if (!content.length) throw new Error("There's no transcribed or written text to summarise yet.");
+      for(const reflection of allParts(entry).filter(p=>p.reflectionAnswer)) {
+        if(state.pauseTranscription.has(id))return;
+        if(reflection.summary&&reflection.bulletPoints?.length)continue;
+        const answer=reflection.answer||reflection.text||"";
+        if(!answer.trim())continue;
+        const result=await callAI("/organize",{content:[{createdAt:reflection.createdAt,type:"reflection answer",text:"Question (context only): "+reflection.question+"\nYour answer: "+answer}],personalProfile:(localStorage.getItem("unscripted-personal-profile")||"").slice(0,4000)});
+        await persist(fresh=>{const part=fresh.parts.find(p=>p.id===reflection.id);if(part){part.summary=result.summary||"";part.bulletPoints=Array.isArray(result.bulletPoints)?result.bulletPoints:[];}});
+        if(state.view==="entry"&&state.selected===id)renderEntry();
+      }
+      const content = sortedParts(entry).filter(p=>!p.reflectionAnswer).map((part) => ({ createdAt: part.createdAt, type: part.type, text: part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || "").join(" ") })).filter((p) => p.text?.trim());
+      if (!content.length) { if(allParts(entry).some(p=>p.reflectionAnswer&&p.summary))return; throw new Error("There's no transcribed or written text to summarise yet."); }
       const data = await callAI("/organize", { content, existingTitle: entry.title, existingTags: entry.tags || [], personalProfile: (localStorage.getItem("unscripted-personal-profile") || "").slice(0,4000) });
       const fresh = await transaction("entries", "readonly", store => store.get(id));
       if (!fresh) return;
@@ -409,6 +424,7 @@
       if (allClips(entry).some(c => !c.transcript && !c.transcriptionComplete)) throw new Error("More audio was added. Continue to transcribe the remaining clips.");
       if (typeof data.title === "string" && data.title.trim() && !entry.titleEdited) entry.title = data.title.trim().slice(0, 120);
       if (typeof data.summary === "string" && !entry.summaryEdited) entry.summary = data.summary.trim();
+      if (Array.isArray(data.bulletPoints)) entry.bulletPoints=data.bulletPoints;
       if (Array.isArray(data.tags)) {
         const tags = data.tags.filter((tag) => typeof tag === "string" && tag.trim()).map((tag) => tag.trim().slice(0, 45));
         // Preserve manually added tags, plus fresh AI suggestions.
@@ -463,6 +479,23 @@
     } catch (error) { notice("askStatus", "Could not analyse diary: " + error.message, true); }
     finally { $("askSubmit").disabled = false; }
   }
+  const summaryViews = new Map();
+  function summarySwitch(key, summary, points, onRefresh) {
+    const wrap = make("div", "summary-switch");
+    const tabs = make("div", "summary-tabs"); tabs.setAttribute("role", "group"); tabs.setAttribute("aria-label", "Summary format");
+    const body = make("div", "summary-body");
+    function draw(view) {
+      summaryViews.set(key, view); tabs.replaceChildren(); body.replaceChildren();
+      for (const mode of ["summary", "bullets"]) {
+        const b = make("button", mode === view ? "selected" : "", mode === "summary" ? "Summary" : "Bullet points");
+        b.type="button"; b.setAttribute("aria-pressed", mode===view); b.onclick=()=>draw(mode); tabs.append(b);
+      }
+      if(view==="summary") body.append(make("p","summary-text",summary||"No summary yet."));
+      else if(Array.isArray(points)&&points.length){const list=make("ul","summary-bullets");for(const point of points)list.append(make("li","",point));body.append(list);}
+      else {body.append(make("p","tiny","Generate detailed bullet points for this recording."));const b=make("button","text-action","Generate bullet points");b.type="button";b.onclick=onRefresh;body.append(b);}
+    }
+    draw(summaryViews.get(key)||"summary"); wrap.append(tabs,body);return wrap;
+  }
   function renderReflection(entry) {
     $("reflectionQuestion").hidden=true;
     const target=$("reflectionSources");target.replaceChildren();
@@ -472,15 +505,19 @@
       const card=make("section","reflection-answer-card");
       card.append(make("div","tiny",fmtDate(item.createdAt,true)),make("h3","reflection-question",item.question));
       if(!item.legacy){
-        card.append(make("div","tiny","Your answer"),make("p","reflection-answer-text",item.answer));
         if(item.clips?.length)card.append(window.UnscriptedRecordingPlayer.create(item.clips,getAudio,"reflection answer"));
-        const edit=make("button","text-action","Edit answer");edit.type="button";edit.onclick=()=>openEditor("Edit reflection answer",item.answer,async value=>{
+        const pending=(item.clips||[]).filter(c=>!c.transcript&&!c.transcriptionComplete).length;
+        if(pending){const status=make("div","reflection-pending","⚠ "+pending+" audio clip"+(pending===1?"":"s")+" awaiting transcription");const retry=make("button","text-action",state.processing.has(entry.id)?"Transcribing…":"Continue transcription");retry.disabled=state.processing.has(entry.id);retry.onclick=()=>processEntry(entry.id);status.append(retry);card.append(status);}
+        card.append(summarySwitch(item.id,item.summary,item.bulletPoints,()=>processEntry(entry.id)));
+        const details=make("details","reflection-transcript"),heading=make("summary","","Full transcript");
+        details.append(heading,make("p","reflection-answer-text",item.answer||"Your audio is saved. Transcript pending."));
+        const edit=make("button","text-action","Edit transcript");edit.type="button";edit.onclick=()=>openEditor("Edit reflection transcript",item.answer||"",async value=>{
           if(!value.trim())return;
           const fresh=await transaction("entries","readonly",store=>store.get(entry.id));
           const part=fresh?.parts.find(p=>p.id===item.id);if(!part)throw Error("This reflection no longer exists.");
-          part.answer=value;part.text="Reflection question: "+part.question+"\nYour answer: "+value;
-          await saveEntry(fresh);await refreshEntries();renderEntry();
-        });card.append(edit);
+          part.answer=value;part.answerEdited=true;part.text="Reflection question: "+part.question+"\nYour answer: "+value;part.summary="";part.bulletPoints=[];
+          await saveEntry(fresh);await refreshEntries();renderEntry();processEntry(entry.id);
+        });details.append(edit);card.append(details);
       }
       for(const id of item.sourceIds||[]){const source=state.entries.find(e=>e.id===id);if(!source)continue;const button=make("button","source-link",fmtDate(source.createdAt)+" · "+source.title);button.type="button";button.onclick=()=>openEntry(id);card.append(button);}
       target.append(card);
@@ -499,6 +536,33 @@
       truncated:truncated||text.length>24000||sources.length>history.length+1});
     if(typeof result.question!=="string"||!result.question.trim())throw Error("No question returned. Try again.");
     return {...result,sourceIds:(result.sourceIds||[]).filter(id=>id===entry.id||history.some(x=>x.id===id))};
+  }
+  async function savePerspectiveClip(id, partId, doc, blob, duration) {
+    const clipId=uid(), reflectionId=partId||uid();
+    await new Promise((resolve,reject)=>{
+      const tx=state.db.transaction(["entries","audio"],"readwrite"),store=tx.objectStore("entries"),req=store.get(id);
+      req.onsuccess=()=>{const entry=req.result;if(!entry){tx.abort();return;}
+        let part=entry.parts.find(p=>p.id===reflectionId);
+        if(!part){part={id:reflectionId,type:"note",reflectionAnswer:true,reflectionDraft:true,createdAt:new Date().toISOString(),question:doc.question,sourceIds:doc.sourceIds||[],answer:"",text:"Reflection question: "+doc.question,clips:[]};entry.parts.push(part);}
+        part.clips.push({id:clipId,duration,mime:blob.type,transcript:""});
+        tx.objectStore("audio").put({id:clipId,blob});entry.updatedAt=new Date().toISOString();store.put(entry);
+      };tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error("Could not save this audio."));
+    });
+    await refreshEntries();window.dispatchEvent(new Event("unscripted-change"));return reflectionId;
+  }
+  async function finishPerspective(id,partId,answer) {
+    const fresh=await transaction("entries","readonly",s=>s.get(id)),part=fresh?.parts.find(p=>p.id===partId);
+    if(!part)throw Error("Saved recording missing.");
+    part.reflectionDraft=false;part.typedAnswer=answer.trim();
+    part.answer=[part.typedAnswer,...part.clips.map(c=>c.transcript||"")].filter(Boolean).join("\n\n");
+    part.text="Reflection question: "+part.question+"\nYour answer: "+part.answer;
+    await saveEntry(fresh);await refreshEntries();if(state.selected===id)renderEntry();
+  }
+  async function discardPerspective(id,partId) {
+    await new Promise((resolve,reject)=>{const tx=state.db.transaction(["entries","audio"],"readwrite"),store=tx.objectStore("entries"),req=store.get(id);
+      req.onsuccess=()=>{const entry=req.result;if(!entry)return;const part=entry.parts.find(p=>p.id===partId);for(const c of part?.clips||[])tx.objectStore("audio").delete(c.id);entry.parts=entry.parts.filter(p=>p.id!==partId);store.put(entry);};
+      tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+    });await refreshEntries();window.dispatchEvent(new Event("unscripted-change"));if(state.selected===id)renderEntry();
   }
   async function savePerspective(id,doc) {
     if(state.processing.has(id))throw Error("Wait for the summary to finish, then save again.");
@@ -594,7 +658,7 @@
   window.UnscriptedDiary = {
     pauseForLock: () => { const rec=state.recording;if(rec&&!rec.closing){rec.paused=true;if(rec.recorder?.state==="recording")flushClip(rec);updateRecorderUI();} },
     config: getApiConfig, entries: () => state.entries, ready: () => !!state.db, recording: () => !!state.recording,
-    audio: getAudio, clips: allClips, exportBackup, callAI, activeAI, toast:showToast, profiles:profileData, restoreProfiles:restoreProfileData, saveInterview, savePerspective, perspectiveQuestion, openEntry, sources:chooseAskSources,
+    audio: getAudio, clips: allClips, exportBackup, callAI, activeAI, toast:showToast, savePerspectiveClip, finishPerspective, discardPerspective, processEntry, profiles:profileData, restoreProfiles:restoreProfileData, saveInterview, savePerspective, perspectiveQuestion, openEntry, sources:chooseAskSources,
     freshEntries: () => transaction("entries", "readonly", s => s.getAll()),
     restore: (entries, audios) => new Promise((resolve,reject) => {
       const tx = state.db.transaction(["entries","audio"], "readwrite");

@@ -9,7 +9,7 @@ document:{getElementById:element,createElement:tag=>({tag,style:{},children:[],a
 localStorage:{getItem:()=>null},sessionStorage:{getItem:()=>null},
 window:{MediaRecorder:Recorder,indexedDB:{},dispatchEvent(){}}};
 let source=fs.readFileSync("app.js","utf8");
-source=source.replace("  init();", '  state.db = globalThis.fixtureDb; showToast=message=>{globalThis.lastToast=message};openEntry=id=>{state.selected=id};switchView=view=>{state.view=view};activeAI=()=>false;globalThis.testRecording={state,startRecording,startClip,flushClip,cancelRecording,updateRecorderUI,saveInterview,savePerspective,searchMatches,chooseAskSources,allClips,processEntry,renderTranscriptionProgress};renderEntry=()=>{};renderHome=()=>{};callAI=(...args)=>globalThis.fakeAI(...args);');
+source=source.replace("  init();", '  state.db = globalThis.fixtureDb; showToast=message=>{globalThis.lastToast=message};openEntry=id=>{state.selected=id};switchView=view=>{state.view=view};activeAI=()=>false;globalThis.testRecording={state,startRecording,startClip,flushClip,cancelRecording,updateRecorderUI,saveInterview,savePerspective,searchMatches,chooseAskSources,allClips,processEntry,renderTranscriptionProgress,savePerspectiveClip,finishPerspective,discardPerspective};renderEntry=()=>{};renderHome=()=>{};callAI=(...args)=>globalThis.fakeAI(...args);');
 context.fixtureDb=db;
 vm.runInNewContext(source,context);
 const T=context.testRecording;
@@ -52,5 +52,21 @@ const T=context.testRecording;
  await T.processEntry(pauseEntry.id);
  T.renderTranscriptionProgress(entries.get(pauseEntry.id));
  assert.equal(panel.hidden,true,"completed transcription controls disappear");
+
+ const reflectionId=await T.savePerspectiveClip("entry",null,{question:"What else?",sourceIds:[]},new Blob(["voice"]),120000);
+ let reflected=entries.get("entry").parts.find(p=>p.id===reflectionId);
+ assert(reflected.reflectionDraft);assert(audios.has(reflected.clips[0].id));
+ await T.finishPerspective("entry",reflectionId,"Extra note");
+ context.fakeAI=async path=>path==="/transcribe"?{text:"My long reflection"}:{summary:"A warm summary",bulletPoints:["A specific concern","A concrete example"],tags:[]};
+ await T.processEntry("entry");
+ reflected=entries.get("entry").parts.find(p=>p.id===reflectionId);
+ assert.match(reflected.answer,/Extra note/);assert.match(reflected.answer,/My long reflection/);
+ assert.equal(reflected.summary,"A warm summary");assert.equal(reflected.bulletPoints.length,2);
+ const clipId=reflected.clips[0].id;
+ await T.discardPerspective("entry",reflectionId);
+ assert(!audios.has(clipId));assert(!entries.get("entry").parts.some(p=>p.id===reflectionId));
+ const audioCount=audios.size;
+ await assert.rejects(T.savePerspectiveClip("missing",null,{question:"Q"},new Blob(["orphan"]),100));
+ assert.equal(audios.size,audioCount,"missing entries cannot create orphan reflection audio");
  console.log("Passed: saved progress, retries, silence, pause after current clip, resume and compact controls hidden on completion.");
 })().catch(e=>{console.error(e);process.exit(1)});
