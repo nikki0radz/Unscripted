@@ -6,7 +6,7 @@
   const DB_VERSION = 1;
   const CLIP_MS = 120000; // independently playable, auto-saved two-minute clips
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(36).slice(2));
-  const state = { db: null, entries: [], view: "home", selected: null, topic: "All", recording: null, urls: [], processing: new Set(), editorCallback: null, toastTimeout: null, openTranscript: false };
+  const state = { db: null, entries: [], view: "home", selected: null, topic: "All", recording: null, urls: [], processing: new Set(), pauseTranscription: new Set(), editorCallback: null, toastTimeout: null, openTranscript: false };
   const fmtDate = (iso, full = false) => new Date(iso).toLocaleString(undefined, full ? { weekday: "long", year: "numeric", month: "long", day: "numeric" } : { day: "numeric", month: "short", year: "numeric" });
   const fmtTime = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   const fmtDuration = (ms) => { const m = Math.floor((ms || 0) / 60000); const s = Math.floor(((ms || 0) % 60000) / 1000); return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0"); };
@@ -95,7 +95,11 @@
         const audio = window.UnscriptedRecordingPlayer.create(segments, getAudio, "recording " + (index + 1));
         box.append(audio);
         const pending = segments.filter((s) => !s.transcript && !s.transcriptionComplete).length;
-        if (pending) box.append(make("div", "tiny", "Transcription progress below"));
+        if (pending) {
+          box.style.borderColor = "#d78080";
+          const warning = make("div", "tiny", "⚠ " + pending + " clip" + (pending === 1 ? "" : "s") + " awaiting transcription");
+          warning.style.color = "#f1a1a1"; box.append(warning);
+        }
       }
       container.append(box);
     });
@@ -103,7 +107,7 @@
     renderTranscriptionProgress(entry);
     const busy = state.processing.has(entry.id);
     $("transcribeButton").disabled = busy; $("summaryActionLabel").innerHTML = busy ? "Processing…" : clips.some(c => !c.transcript && !c.transcriptionComplete) ? "Continue<br>transcription" : "Refresh<br>summary";
-    notice("entryStatus", busy ? "Working on your transcripts and summary. Keep the page open while it finishes." : entry.aiError ? entry.aiError : (!activeAI() && clips.some((c) => !c.transcript) ? "Audio saved. Connect your private AI backend in Settings to transcribe it automatically." : ""), !!entry.aiError);
+    notice("entryStatus", busy ? (clips.some(c => !c.transcript && !c.transcriptionComplete) ? "" : "Refreshing summary…") : entry.aiError ? entry.aiError : (!activeAI() && clips.some((c) => !c.transcript) ? "Audio saved. Connect your private AI backend in Settings to transcribe it automatically." : ""), !!entry.aiError);
     $("entrySummary").textContent = entry.summary || (transcriptText(entry) ? "No summary yet. You can write one yourself or connect AI." : "No summary yet. Your original audio is saved; nothing has been invented.");
     const tags = $("entryTags"); tags.replaceChildren();
     if (!(entry.tags || []).length) tags.append(make("span", "muted", "No topics yet."));
@@ -115,33 +119,41 @@
   function renderTranscriptionProgress(entry) {
     let panel = $("transcriptionProgress");
     if (!panel) {
-      panel = make("section", "part-card"); panel.id = "transcriptionProgress";
+      panel = make("section"); panel.id = "transcriptionProgress";
       $("entryParts").after(panel);
     }
     panel.replaceChildren();
-    const clips = allClips(entry).filter(c => !allParts(entry).some(p => p.reflectionAnswer && (p.clips || []).includes(c)));
-    panel.hidden = !clips.length;
-    if (!clips.length) return;
-    const done = clips.filter(c => c.transcript || c.transcriptionComplete);
-    const busy = state.processing.has(entry.id);
-    const duration = done.reduce((n,c) => n + (c.duration || 0), 0);
-    const total = clips.reduce((n,c) => n + (c.duration || 0), 0);
-    panel.append(make("strong", "", done.length === clips.length ? "Transcription complete" : busy ? "Transcribing…" : entry.aiError ? "Transcription paused" : "Transcription waiting"));
-    const progress = make("progress"); progress.max = total || clips.length; progress.value = total ? duration : done.length;
-    progress.style.cssText = "display:block;width:100%;margin:12px 0;accent-color:var(--accent)";
-    progress.setAttribute("aria-label", "Audio transcribed"); panel.append(progress);
-    panel.append(make("div", "tiny", done.length + " of " + clips.length + " clips complete · " + fmtDuration(duration) + " / " + fmtDuration(total) + " audio transcribed"));
-    panel.append(make("p", "tiny", "Completed clips are saved. Keep the app open and your screen awake while processing; closing it may interrupt transcription. Reopen this entry and continue where it stopped."));
-    if (!busy && done.length < clips.length) {
-      const button = make("button", "text-action", "Continue transcription");
-      button.type = "button"; button.onclick = () => processEntry(entry.id); panel.append(button);
-    }
+    const clips = allParts(entry).filter(p => p.type === "recording").flatMap(p => p.clips || []);
+    const done = clips.filter(c => c.transcript || c.transcriptionComplete).length;
+    panel.hidden = !clips.length || done === clips.length;
+    if (panel.hidden) return;
+    panel.style.cssText = "display:flex;align-items:center;gap:10px;padding:10px 12px;margin:10px 0;border:1px solid #a85e5e;border-radius:12px;background:var(--panel)";
+    const busy = state.processing.has(entry.id), pausing = state.pauseTranscription.has(entry.id);
+    const details = make("div"); details.style.cssText = "flex:1;min-width:0";
+    const label = make("div", "tiny", done + " / " + clips.length + " clips · " + (pausing && busy ? "Pausing…" : busy ? "Transcribing…" : "Paused"));
+    label.style.color = "#f1a1a1";
+    label.setAttribute("role", "status"); details.append(label);
+    const progress = make("progress"); progress.max = clips.length; progress.value = done;
+    progress.style.cssText = "display:block;width:100%;height:5px;margin-top:6px;accent-color:#d78080";
+    progress.setAttribute("aria-label", "Transcription progress"); details.append(progress);
+    const button = make("button", "icon-button small", busy ? "Ⅱ" : "▶");
+    button.type = "button"; button.disabled = busy && pausing;
+    const action = busy ? "Pause transcription after the current clip" : "Resume transcription";
+    button.title = action; button.setAttribute("aria-label", action);
+    button.style.cssText = "color:#f1a1a1;border-color:#a85e5e";
+    button.onclick = () => {
+      if (state.processing.has(entry.id)) {
+        state.pauseTranscription.add(entry.id);
+        renderTranscriptionProgress(entry);
+      } else processEntry(entry.id);
+    };
+    panel.append(details, button);
   }
   function renderTranscript(entry) {
     const target = $("transcriptArea"); target.replaceChildren();
     for (const part of sortedParts(entry)) {
       const div = make("div", "transcript-part"); div.append(make("div", "transcript-head", (part.reflectionAnswer ? "Reflection · question & answer" : part.type === "note" ? "Written note" : "Voice recording") + " · " + fmtDate(part.createdAt) + " at " + fmtTime(part.createdAt)));
-      const body = part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || "[Audio waiting for transcription]").join("\n\n");
+      const body = part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || (c.transcriptionComplete ? "[No speech detected]" : "[Audio waiting for transcription]")).join("\n\n");
       div.append(make("p", "", body || "No transcript yet.")); target.append(div);
     }
   }
@@ -352,6 +364,7 @@
   }
   async function processEntry(id) {
     if (state.processing.has(id)) return;
+    state.pauseTranscription.delete(id);
     state.processing.add(id); if (state.view === "entry" && state.selected === id) renderEntry();
     try {
       let entry = state.entries.find((e) => e.id === id); if (!entry) return;
@@ -367,6 +380,7 @@
       for (const part of sortedParts(entry)) {
         if (part.type !== "recording") continue;
         for (const clip of part.clips || []) {
+          if (state.pauseTranscription.has(id)) return;
           if (clip.transcript || clip.transcriptionComplete) continue;
           const blob = await getAudio(clip.id); if (!blob) throw new Error("Missing audio clip on this device.");
           if (blob.size > 24 * 1024 * 1024) throw new Error("A clip is over 24 MB. Add it manually in smaller parts.");
@@ -380,10 +394,12 @@
           await persist(fresh => {
             const saved = allClips(fresh).find(c => c.id === clip.id);
             if (saved) { saved.transcript = clip.transcript; saved.transcriptionComplete = true; }
+            fresh.aiError = "";
           }); // persist each completed clip without overwriting concurrent edits
           if (state.view === "entry" && state.selected === id) renderEntry();
         }
       }
+      if (state.pauseTranscription.has(id)) return;
       const content = sortedParts(entry).map((part) => ({ createdAt: part.createdAt, type: part.type, text: part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || "").join(" ") })).filter((p) => p.text?.trim());
       if (!content.length) throw new Error("There's no transcribed or written text to summarise yet.");
       const data = await callAI("/organize", { content, existingTitle: entry.title, existingTags: entry.tags || [], personalProfile: (localStorage.getItem("unscripted-personal-profile") || "").slice(0,4000) });
@@ -401,8 +417,8 @@
       entry.aiError = ""; await saveEntry(entry); showToast("Transcription and summary ready ✦");
     } catch (error) {
       const entry = state.entries.find((e) => e.id === id);
-      if (entry) { entry.aiError = "AI processing paused: " + error.message + " Your original audio is still saved. Tap Continue transcription (or Refresh summary) to retry. Completed clips will be kept."; await saveEntry(entry).catch(() => {}); }
-    } finally { state.processing.delete(id); await refreshEntries().catch(() => {}); if (state.view === "entry" && state.selected === id) renderEntry(); else if (state.view === "home") renderHome(); }
+      if (entry) { entry.aiError = "Processing paused: " + error.message; await saveEntry(entry).catch(() => {}); }
+    } finally { state.processing.delete(id); state.pauseTranscription.delete(id); await refreshEntries().catch(() => {}); if (state.view === "entry" && state.selected === id) renderEntry(); else if (state.view === "home") renderHome(); }
   }
   function renderSettings() { $("apiUrl").value = getApiConfig().url; $("apiUrl").readOnly = privateHost(); $("privateSignOut").hidden = !privateHost(); window.dispatchEvent(new Event("unscripted-settings")); $("accessCode").value = sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || ""; $("rememberCode").checked = !!localStorage.getItem("unscripted-access-code"); $("accentSwatch").style.background = getComputedStyle(document.documentElement).getPropertyValue("--accent"); }
   function saveApiSettings() { const url = $("apiUrl").value.trim().replace(/\/+$/, ""); if (url && (!url.startsWith("https://") || !URL.canParse(url))) { notice("settingsStatus", "Use a full HTTPS backend address.", true); return; } localStorage.setItem("unscripted-api-url", url); sessionStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); if ($("rememberCode").checked) localStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); else localStorage.removeItem("unscripted-access-code"); notice("settingsStatus", activeAI() ? "Connection saved for this browser tab. New recordings will be transcribed automatically when you save them." : "Saved. Add a backend address and access code to enable AI."); }
