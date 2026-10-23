@@ -4,6 +4,7 @@
   const $ = id => document.getElementById(id);
   const modes = { know: { title: "Get to know me", key: "unscripted-know-quiz", context: "unscripted-personal-profile", target: "knowQuiz" }, reflection: { title: "Reflection context", key: "unscripted-reflection-quiz", context: "unscripted-reflection-profile", target: "reflectionQuiz" }, interview: { title:"Interview me", key:"unscripted-interview-draft" } };
   let mode = null, data = null, editing = -1, busy = false, voice = null, epoch = 0;
+  const clarification=window.UnscriptedClarify?.create({buttonId:"quizExplain",panelId:"quizExplanation",question:()=>$("quizQuestion").textContent,context:()=>mode==="interview"?"Interview focus: "+(data?.goal||""):"Getting to know the diary owner"});
   function load(which) { try { const saved = JSON.parse(localStorage.getItem(modes[which].key) || "{}"); return { answers: Array.isArray(saved.answers) ? saved.answers.slice(0,6) : [], question: typeof saved.question === "string" ? saved.question : "", complete: !!saved.complete, draft:typeof saved.draft==="string"?saved.draft:"", editing:Number.isInteger(saved.editing)?saved.editing:-1, goal:typeof saved.goal==="string"?saved.goal:"A mix of questions", entryId:typeof saved.entryId==="string"?saved.entryId:null, questionSources:Array.isArray(saved.questionSources)?saved.questionSources:[] }; } catch (_) { return { answers: [], question: "", complete: false }; } }
   function save() { localStorage.setItem(modes[mode].key, JSON.stringify(data)); window.dispatchEvent(new Event("unscripted-change")); renderCards(); }
   function tell(message, error = false) { $("quizStatus").textContent = message; $("quizStatus").hidden = !message; $("quizStatus").classList.toggle("error", error); }
@@ -31,6 +32,7 @@
     $("quizReview").hidden = true; $("quizAnswerArea").hidden = false;
     $("quizProgress").textContent = editing >= 0 ? "Edit answer " + (editing + 1) : "Question " + Math.min(data.answers.length+1,6) + " of 6";
     $("quizQuestion").textContent = editing >= 0 ? data.answers[editing].question : data.question;
+    clarification?.reset(!!$("quizQuestion").textContent);
     $("quizNext").textContent = editing >= 0 ? "Save answer" : data.answers.length === 5 ? "Finish quiz" : "Next question";
     $("quizRefresh").hidden = editing >= 0; $("quizSkip").hidden = editing >= 0; $("quizFinishEarly").hidden=mode!=="interview"||editing>=0||!data.answers.some(answer=>answer.answer?.trim());
     renderSources(editing>=0?data.answers[editing].sourceIds||[]:data.questionSources||[]);
@@ -52,6 +54,7 @@
     if(id)data.entryId=id;save();
   }
   async function nextQuestion() {
+    clarification?.reset(false);
     busy = true; tell("Thinking of your next question..."); buttons();
     try {
       let result;
@@ -65,7 +68,7 @@
       data.questionSources=result.sourceIds||[];
       data.question = result.question; save(); tell(""); showQuestion();
     } catch (error) { tell(error.message, true); }
-    finally {busy=false;buttons();}
+    finally {busy=false;clarification?.reset(!!data.question);buttons();}
   }
   async function buildContext() {
     busy=true; tell("Putting your answers together...");buttons();
@@ -86,6 +89,7 @@
     finally{busy=false;buttons();}
   }
   function review() {
+    clarification?.reset(false);
     $("quizAnswerArea").hidden=true;$("quizReview").hidden=false;$("quizQuestion").textContent="Your answers";
     $("quizProgress").textContent=data.answers.length+" answers";$("quizSourceLinks").replaceChildren();
     $("quizReview").replaceChildren();
@@ -207,7 +211,7 @@
   $("quizClose").onclick=async()=>{
     if(busy)return;
     if(voice&&!await window.UnscriptedConfirm("Saved quiz answers will stay, but this unfinished voice answer will be discarded.",{title:"Close this voice answer?",confirmLabel:"Discard voice answer",danger:true}))return;
-    epoch++;
+    epoch++;clarification?.reset(false);
     if(voice){voice.cancelled=true;voice.recorder.stop();}
     if(mode&&data&&$("quizAnswer").value.trim()){
       // Keep an unfinished typed answer for when the quiz is resumed.
