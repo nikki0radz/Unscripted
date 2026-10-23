@@ -30,20 +30,28 @@ export function replyFits(answer,plan){
   const sentences=answer.trim().match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g)||[];
   return answer.trim().split(/\s+/).length<=plan.maxWords&&sentences.length<=plan.maxSentences&&!/\n\s*\n|(?:^|\n)\s*(?:[-*•]|\d+\.)\s|(?:^|\n)#{1,6}\s/.test(answer);
 }
-export function responseRules(plan){return `REPLY CONTRACT (takes priority over chatty style or saved preferences): ${plan.detailed?'The reader explicitly requested detail.':'Be concise; do not fill the available budget.'} Maximum ${plan.maxWords} words and ${plan.maxSentences} sentences. ${plan.detailed?'':'One short paragraph. No headings, lists, recap, unsupported character assessment, emoji clusters or offer to continue. Honour the chosen warmth and friendliness even while concise; a relevant emoji is fine if enabled.'} ${plan.kind==='standout'?'The user asks whether ONE thing stands out, not for a summary. Give at most ONE concrete supported observation; never bundle creativity, relationships, home, anxiety and other subjects into a catch-all observation. Do not respond with a catalogue of topics. If nothing is clearly distinctive, say that plainly.':''} ${plan.previousQuestion?'This is a follow-up to the recurring-theme question supplied as analysisQuestion; keep that meaning. Previous assistant answers are NOT evidence and may be overbroad or wrong.':''} The subject of the CURRENT question controls the reply. Never reproduce the tone, length or format of a previous assistant message. Return JSON {"answer":string,"sourceIds":string[]}.`;}
+export function responseRules(plan){return `REPLY CONTRACT (takes priority over chatty style or saved preferences): ${plan.detailed?'The reader explicitly requested detail.':'Be concise; do not fill the available budget.'} Maximum ${plan.maxWords} words and ${plan.maxSentences} sentences. ${plan.detailed?'':'One short paragraph. No headings, lists, recap, unsupported character assessment, large emoji clusters or offer to continue. Honour the chosen warmth and friendliness even while concise; honour the requested emoji level (including two or three when set to maximum).'} ${plan.kind==='standout'?'The user asks whether ONE thing stands out, not for a summary. Give at most ONE concrete supported observation; never bundle creativity, relationships, home, anxiety and other subjects into a catch-all observation. Do not respond with a catalogue of topics. If nothing is clearly distinctive, say that plainly.':''} ${plan.previousQuestion?'This is a follow-up to the recurring-theme question supplied as analysisQuestion; keep that meaning. Previous assistant answers are NOT evidence and may be overbroad or wrong.':''} The subject of the CURRENT question controls the reply. Never reproduce the tone, length or format of a previous assistant message. Return JSON {"answer":string,"sourceIds":string[]}.`;}
+function needsEmojiRepair(answer,style){return style?.emojis==='lots'&&typeof answer==='string'&&![...answer.matchAll(/\p{Extended_Pictographic}/gu)].length;}
+function finishStyle(result,style){
+  // A failed style-only rewrite must never erase a valid, grounded answer.
+  if(needsEmojiRepair(result?.answer,style))return {...result,answer:result.answer+' 💭🤍'};
+  return result;
+}
 export async function enforceReplyContract(result,{plan,question,patterns,sources,style},generate){
-  if(replyFits(result?.answer,plan))return result;
+  const validDraft=replyFits(result?.answer,plan);
+  if(validDraft&&!needsEmojiRepair(result.answer,style))return result;
   let repaired;
   try{
-    const raw=await generate(responseRules(plan)+'\n'+styleInstructions(style,'chat')+'\nRewrite the overlong or badly formatted draft from scratch to answer the specific question. Remove the broad diary recap and unsupported praise. Use ONLY the supplied evidence, not the previous draft as factual evidence. Keep one observation for a standout question. Do not merely cut off the original text.',JSON.stringify({question,analysisQuestion:plan.analysisQuestion,verifiedPatterns:patterns,sources,draft:typeof result?.answer==='string'?result.answer.slice(0,12000):''}));
+    const raw=await generate(responseRules(plan)+'\n'+styleInstructions(style,'chat')+'\nRewrite the overlong, badly formatted or insufficiently personalised draft to answer the specific question. If only style needs changing, preserve the exact factual meaning and uncertainty, keep the answer equally short, and visibly apply the requested friendliness and emojis. Remove the broad diary recap and unsupported praise. Use ONLY the supplied evidence, not the previous draft as factual evidence. Keep one observation for a standout question. Do not merely cut off the original text.',JSON.stringify({question,analysisQuestion:plan.analysisQuestion,verifiedPatterns:patterns,sources,draft:typeof result?.answer==='string'?result.answer.slice(0,12000):''}));
     repaired=JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));
   }catch{}
-  if(replyFits(repaired?.answer,plan))return {answer:repaired.answer,sourceIds:Array.isArray(repaired.sourceIds)?repaired.sourceIds:[]};
+  if(replyFits(repaired?.answer,plan))return finishStyle({answer:repaired.answer,sourceIds:Array.isArray(repaired.sourceIds)?repaired.sourceIds:[]},style);
+  if(validDraft)return finishStyle(result,style);
   // Never show another wall of text when a concise reply was requested.
   const top=patterns?.themes?.[0];
-  if(top&&typeof top.theme==='string'&&top.theme.split(/\s+/).length<=25)return {answer:'One thing you return to is “'+top.theme.replace(/[.!?]+$/,'')+'”. It comes up on different days, though I’d be careful about calling it the main theme.',sourceIds:top.evidence.map(e=>e.id)};
+  if(top&&typeof top.theme==='string'&&top.theme.split(/\s+/).length<=25)return finishStyle({answer:'One thing you return to is “'+top.theme.replace(/[.!?]+$/,'')+'”. It comes up on different days, though I’d be careful about calling it the main theme.',sourceIds:top.evidence.map(e=>e.id)},style);
   if(plan.kind==='standout'||plan.kind==='recurrence')return noStandoutReply(patterns,style);
-  return {answer:'I couldn’t find a clear answer to that particular question in the excerpts I have.',sourceIds:[]};
+  return finishStyle({answer:'I couldn’t find a clear answer to that particular question in what I can see.',sourceIds:[]},style);
 }
 
 export function standoutEvidence(plan,patterns,sources){
@@ -54,8 +62,8 @@ export function standoutEvidence(plan,patterns,sources){
 }
 
 export function noStandoutReply(patterns,style={}){
-  const warm=style?.friendliness!=='neutral'&&Number(style?.blunt||0)<2;
-  const emoji=warm&&style?.emojis!=='none'?' 💭':'';
+  const warm=style?.friendliness!=='neutral';
+  const emoji=style?.emojis==='lots'?' 💭🤍':style?.emojis!=='none'?' 💭':'';
   const person=patterns?.people?.[0];
   let answer=warm?'Nothing is jumping out as one clear recurring theme in what I can see, and I wouldn’t want to force one'+emoji+'.':'I’m not seeing one clear recurring theme that stands out in the excerpts available.';
   if(person&&typeof person.name==='string'&&person.name.split(/\s+/).length<=5)answer+=' '+person.name+' does come up across different days; I’d separate that from one particular recurring concern.';
