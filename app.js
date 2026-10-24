@@ -26,8 +26,8 @@
   const allParts = (entry) => entry.parts || [];
   const allClips = (entry) => allParts(entry).filter((p) => p.type === "recording" || p.reflectionAnswer || p.interviewQuestion).flatMap((p) => p.clips || []);
   const totalTime = (entry) => allClips(entry).reduce((sum, clip) => sum + (clip.duration || 0), 0);
-  const transcriptText = (entry) => allParts(entry).map((part) => part.type === "note" ? (part.text || "") : (part.clips || []).map((c) => c.transcript || "").join(" ")).join("\n");
-  const sortedParts = (entry) => allParts(entry).slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const transcriptText = (entry) => allParts(entry).filter(part=>!part.interviewQuestion||!part.skipped).map((part) => part.type === "note" ? (part.text || "") : (part.clips || []).map((c) => c.transcript || "").join(" ")).join("\n");
+  const sortedParts = (entry) => allParts(entry).filter(part=>!part.interviewQuestion||!part.skipped).slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   function privateHost() { return !!document.querySelector('meta[name="unscripted-private-host"]'); }
   function activeAI() { const { url, code } = getApiConfig(); return /^https:\/\//.test(url) && (!!code || privateHost()); }
   function switchView(view) {
@@ -359,15 +359,16 @@
       if(!document.answers.some(answer=>answer.answer?.trim()||answer.hasAudio))return null;
       entry=newEntry();entry.kind="interview";entry.title="Interview · "+(document.goal||"A little of everything").slice(0,70);
     }
-    const notes=document.answers.map((answer,index)=>({
+    const answered=document.answers.filter(answer=>!answer.skipped&&(answer.answer?.trim()||answer.hasAudio));
+    const notes=answered.map((answer,index)=>({
       ...(entry.parts||[]).find(p=>p.id===answer.id),
       interviewPending:false,question:answer.question,answer:answer.answer,skipped:!!answer.skipped,
       type:"note",id:answer.id||uid(),createdAt:answer.createdAt||new Date().toISOString(),interviewQuestion:true,
-      text:"Question "+(index+1)+": "+answer.question+"\n\n"+(answer.skipped?"Skipped":"Your answer: "+answer.answer),
+      text:"Question "+(index+1)+": "+answer.question+"\n\n"+("Your answer: "+(answer.answer||"")),
       sourceIds:Array.isArray(answer.sourceIds)?answer.sourceIds:[]
     }));
     entry.parts=[...notes,...allParts(entry).filter(part=>!part.interviewQuestion||(part.interviewPending&&!notes.some(n=>n.id===part.id)))];
-    entry.interview={goal:document.goal,complete:!!document.complete,answers:document.answers,updatedAt:new Date().toISOString()};
+    entry.interview={goal:document.goal,complete:!!document.complete,answers:answered,updatedAt:new Date().toISOString()};
     entry.tags=[...new Set([...(entry.tags||[]),"Interview"])];
     entry.userTags=[...new Set([...(entry.userTags||[]),"Interview"])];
     await saveEntry(entry);await refreshEntries();if(state.view==="home")renderHome();
