@@ -398,7 +398,8 @@
     const timeout = setTimeout(() => controller.abort(), 120000);
     try {
     const response = await fetch(url + path, { method: "POST", credentials: "same-origin", signal: controller.signal, headers: { ...(code ? { Authorization: "Bearer " + code } : {}), ...(asForm ? {} : { "Content-Type": "application/json" }) }, body: asForm ? body : JSON.stringify(body) });
-    const raw = await response.text(); let result; try { result = JSON.parse(raw); } catch (_) { throw new Error("AI server returned a non-JSON response."); }
+    if(response.status===429)throw new Error("The AI service is temporarily rate-limited or its usage allowance is exhausted. Please try again shortly; if it persists, check your OpenAI and Cloudflare usage.");
+    const raw = await response.text(); let result; try { result = JSON.parse(raw); } catch (_) { throw new Error(response.status>=500?"The AI server is unavailable ("+response.status+"). Please try again shortly.":"AI server returned an unreadable response ("+response.status+"). Please try again."); }
     if (!response.ok || result.error) throw new Error(result.error || "AI request failed (" + response.status + ")");
     return result;
     } catch (error) {

@@ -1,11 +1,14 @@
 /* Live reading previews, proportional overall scaling and individual fine tuning. */
 (() => {
   const fonts={"Soft sans":'"DM Sans",system-ui,sans-serif',"System":'system-ui,sans-serif',"Classic serif":'Georgia,serif',"Clean Arial":'Arial,sans-serif',"Open Verdana":'Verdana,sans-serif'};
+  Object.assign(fonts,{"Handwritten":'"Caveat",cursive',"Calligraphy":'"Dancing Script",cursive',"Gothic":'"UnifrakturCook",cursive',"Typewriter":'"Special Elite",monospace'});
   const presets=[
     {id:"soft",name:"Soft & simple",hint:"One rounded, easygoing font",font:"Soft sans",headingFont:"Soft sans"},
     {id:"classic",name:"Classic",hint:"One bookish serif throughout",font:"Classic serif",headingFont:"Classic serif"},
-    {id:"clean",name:"Clean",hint:"One familiar, understated font",font:"System",headingFont:"System"},
-    {id:"roomy",name:"Roomy",hint:"One open, spacious font",font:"Open Verdana",headingFont:"Open Verdana"},
+    {id:"handwritten",name:"Handwriting",hint:"Caveat · relaxed handwritten notes",font:"Handwritten",headingFont:"Handwritten"},
+    {id:"calligraphy",name:"Calligraphy",hint:"Dancing Script · flowing joined-up lettering",font:"Calligraphy",headingFont:"Calligraphy"},
+    {id:"gothic",name:"Gothic",hint:"UnifrakturCook · bold old-world lettering",font:"Gothic",headingFont:"Gothic"},
+    {id:"typewriter",name:"Typewriter",hint:"Special Elite · ink-on-paper character",font:"Typewriter",headingFont:"Typewriter"},
     {id:"diary",name:"Diary",hint:"Characterful headings + soft reading",font:"Soft sans",headingFont:"Diary serif"}
   ];
   function pairFor(value){return presets.find(p=>p.id===value.fontPreset)||{font:value.font||"Soft sans",headingFont:value.headingFont||"Diary serif"};}

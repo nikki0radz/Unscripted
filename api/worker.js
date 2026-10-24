@@ -1,5 +1,5 @@
 import {FOCUSED_ASK_RULES,recurringEvidence,replyPlan,responseRules,enforceReplyContract,standoutEvidence,noStandoutReply} from "./ask-focus.js";
-import {styleInstructions,searchExcerpts} from "./diary-style.js";
+import {styleInstructions,searchExcerpts,normaliseQuestion} from "./diary-style.js";
 import {interview} from "./interview.js";
 import {passkeys} from "./passkeys.js";
 import { profileQuiz } from "./profile-quiz.js";
@@ -99,12 +99,14 @@ async function reflect(body, env) {
   if (!entry || typeof entry.id !== "string" || typeof entry.text !== "string" || !entry.text.trim()) throw new Error("A transcribed or written entry is required.");
   const sources = Array.isArray(body.sources) ? body.sources.filter(x => x && typeof x.id === "string" && typeof x.text === "string").slice(0,12).map(x => ({id:x.id, date:x.date, text:x.text.slice(0,2500)})) : [];
   const input = JSON.stringify({selected:{id:entry.id,date:entry.date,text:entry.text.slice(0,24000)},sources,profile:typeof body.profile === "string" ? body.profile.slice(0,4000) : "",previous:Array.isArray(body.previous) ? body.previous.filter(x => typeof x === "string").slice(-12).map(x=>x.slice(0,600)) : [],historyMayBeIncomplete:true});
-  const result = parseJSON(await openAIText(env, REFLECT_INSTRUCTIONS+"\n"+styleInstructions(body.style,"question"), input));
-  if (typeof result.question !== "string") throw new Error("AI returned no question.");
-  const question = result.question.trim();
-  if (!question || question.length > 600 || (question.match(/[?？]/g) || []).length !== 1 || !/[?？]$/.test(question)) throw new Error("AI did not return one concise question. Tap again to retry.");
+  for(let attempt=0;attempt<2;attempt++){
+  let result;try{result = parseJSON(await openAIText(env, REFLECT_INSTRUCTIONS+"\n"+styleInstructions(body.style,"question")+(attempt?"\nRetry: return ONE concise question, with any emoji BEFORE its final question mark.":""), input));}catch(error){if(!attempt&&/JSON|Unexpected|parse/i.test(error.message))continue;throw error;}
+  if (typeof result.question !== "string") {if(!attempt)continue;throw new Error("AI returned no question. Tap again to retry.");}
+  const question = normaliseQuestion(result.question);
+  if (!question || question.length > 600 || (question.match(/[?？]/g) || []).length !== 1 || !/[?？]$/.test(question)) {if(!attempt)continue;throw new Error("AI did not return one concise question. Tap again to retry.");}
   const valid = new Set([entry.id, ...sources.map(x=>x.id)]);
   return {question,sourceIds:Array.isArray(result.sourceIds)? [...new Set(result.sourceIds.filter(x=>valid.has(x)))].slice(0,6):[entry.id]};
+}
 }
 export default {
   async fetch(request, env) {

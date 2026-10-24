@@ -141,3 +141,17 @@ html,body{font-family:var(--reading-font);font-size:var(--reading-size)}button,i
 .record-heading,.record-timer,.quiz-question,.reflection-question{font-family:var(--heading-font)}
 .section-title-row h2,.entry-block h2,.settings-card h2,.entry-card h3,.empty-state strong,.collapse-trigger,.recorder-sheet h2,.modal-title-row h2{font-family:var(--heading-font)}
 .text-preview-caption,.font-style-card-top,.font-style-card small{font-family:var(--reading-font)!important}
+
+/* Compact thought playback and accent-coloured tools. */
+#entryParts>.part-card{padding:7px 10px!important}
+#entryParts>.part-card .part-head{margin-bottom:2px!important}
+.recording-player{grid-template-columns:36px minmax(0,1fr) auto;gap:8px!important;padding:2px 0!important}
+.recording-player button{grid-row:1;width:36px;height:36px;font-size:calc(15px * var(--text-scale,1));border-color:color-mix(in srgb,var(--accent) 45%,var(--line));color:var(--accent)}
+.recording-player input{grid-column:2;grid-row:1;min-height:30px}
+.recording-player-time{grid-column:3;grid-row:1;white-space:nowrap;font-size:calc(10px * var(--text-scale,1))}
+.recording-player .tiny{grid-row:2}
+.entry-action-row{gap:7px;margin-top:12px}
+.entry-action-row .button-soft{min-height:54px;padding:8px 6px;gap:4px;font-size:calc(11px * var(--text-scale,1));line-height:1.25;border-color:color-mix(in srgb,var(--accent) 50%,var(--line));color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--panel));box-shadow:inset 0 1px 0 color-mix(in srgb,var(--accent) 12%,transparent)}
+.entry-action-row .button-soft:hover{background:color-mix(in srgb,var(--accent) 23%,var(--panel))}
+.entry-action-icon{height:16px;font-size:calc(16px * var(--text-scale,1))}
+@media(max-width:360px){.recording-player{grid-template-columns:36px minmax(0,1fr)}.recording-player-time{grid-column:2;grid-row:1;align-self:start}.recording-player input{align-self:end;height:16px;min-height:16px}}

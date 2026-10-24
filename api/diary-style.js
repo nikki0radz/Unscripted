@@ -21,3 +21,9 @@ export async function searchExcerpts(body,generate){
   const result=JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));
   return {matches:(Array.isArray(result.matches)?result.matches:[]).filter(m=>typeof m.quote==='string'&&m.quote.trim()&&excerpts.some(e=>e.id===m.id&&e.text.includes(m.quote))).slice(0,100)};
 }
+
+// Emoji placement is presentation, not a second question or a validation failure.
+export function normaliseQuestion(value){
+  if(typeof value!=="string")return value;
+  return value.trim().replace(/([?？])([\s\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D]+)$/u,(_,mark,tail)=>tail.trim()?" "+tail.trim()+mark:mark).trim();
+}

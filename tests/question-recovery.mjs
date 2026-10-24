@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {normaliseQuestion} from '../api/diary-style.js';
+import {interview} from '../api/interview.js';
+assert.equal(normaliseQuestion('What matters most? 💭🤍'),'What matters most 💭🤍?');
+assert.equal(normaliseQuestion('What matters most?'),'What matters most?');
+let calls=0;
+const answer=await interview({goal:'Likes & dislikes'},async()=>{calls++;return JSON.stringify(calls===1?{question:'A statement with no question mark.'}:{question:'What song always makes you smile? 😊',sourceIds:[]});});
+assert.equal(calls,2);assert.equal(answer.question,'What song always makes you smile 😊?');
+let failures=0;await assert.rejects(interview({goal:'Likes & dislikes'},async()=>{failures++;throw Error('OpenAI: insufficient quota');}),/insufficient quota/);assert.equal(failures,1,'do not retry account or network errors as malformed content');
+console.log('Passed: emoji-ended questions normalise, malformed output retries once, and upstream quota errors remain visible.');
