@@ -482,7 +482,23 @@
     } finally { state.processing.delete(id); state.pauseTranscription.delete(id); await refreshEntries().catch(() => {}); if (state.view === "entry" && state.selected === id) renderEntry(); else if (state.view === "home") renderHome(); }
   }
   function renderSettings() { $("defaultToneControls").replaceChildren(toneControls(null)); $("apiUrl").value = getApiConfig().url; $("apiUrl").readOnly = privateHost(); $("privateSignOut").hidden = !privateHost(); window.dispatchEvent(new Event("unscripted-settings")); $("accessCode").value = sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || ""; $("rememberCode").checked = !!localStorage.getItem("unscripted-access-code"); $("accentSwatch").style.background = getComputedStyle(document.documentElement).getPropertyValue("--accent"); }
-  function saveApiSettings() { const url = $("apiUrl").value.trim().replace(/\/+$/, ""); if (url && (!url.startsWith("https://") || !URL.canParse(url))) { notice("settingsStatus", "Use a full HTTPS backend address.", true); return; } localStorage.setItem("unscripted-api-url", url); sessionStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); if ($("rememberCode").checked) localStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); else localStorage.removeItem("unscripted-access-code"); notice("settingsStatus", activeAI() ? "Connection saved for this browser tab. New recordings will be transcribed automatically when you save them." : "Saved. Add a backend address and access code to enable AI."); }
+  async function saveSettingsAndReturn(){
+    const button=$("saveSettingsButton");if(button.disabled)return;
+    button.disabled=true;
+    try{
+      document.activeElement?.blur();
+      const tone=$("defaultToneControls").firstElementChild;
+      if(tone?.saveSettings&&!await tone.saveSettings())throw Error("Could not save your AI style. Please try again.");
+      $("textStyleControls").saveSettings?.();
+      if(!saveApiSettings()){ $("settingsStatus").scrollIntoView({block:"center"});return; }
+      window.dispatchEvent(new Event("unscripted-change"));
+      showToast("✓ Changes saved");
+      await new Promise(resolve=>setTimeout(resolve,700));
+      if(state.view==="settings")window.dispatchEvent(new Event("unscripted-back"));
+    }catch(error){showToast("Could not save changes: "+error.message);}
+    finally{button.disabled=false;}
+  }
+  function saveApiSettings() { const url = $("apiUrl").value.trim().replace(/\/+$/, ""); if (url && (!url.startsWith("https://") || !URL.canParse(url))) { notice("settingsStatus", "Use a full HTTPS backend address.", true); return false; } localStorage.setItem("unscripted-api-url", url); sessionStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); if ($("rememberCode").checked) localStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); else localStorage.removeItem("unscripted-access-code"); notice("settingsStatus", activeAI() ? "Connection saved for this browser tab. New recordings will be transcribed automatically when you save them." : "Saved. Add a backend address and access code to enable AI."); return true; }
   function askExcerpt(text,words,limit,spread=false){
     if(text.length<=limit)return text;
     const gap="\n[… excerpt gap …]\n",size=Math.max(200,Math.floor((limit-gap.length*3)/4)),chunks=[];
@@ -546,7 +562,7 @@
     slider("challenge","Challenge my thinking",["Just reflect","Ask gently","Challenge me","Push back clearly"],()=>level(style.challenge),v=>style.challenge=v);
     const emoji=["none","some","lots"];
     slider("emojis","Emojis",["None","A few","Expressive"],()=>Math.max(0,emoji.indexOf(style.emojis)),v=>style.emojis=emoji[v]);
-    const label=make("label","style-notes-label","Anything else about how I should sound?"),notes=make("textarea");notes.rows=2;notes.maxLength=800;notes.value=style.styleNotes||"";notes.placeholder="e.g. Simple English, a little cheeky, no therapy jargon";notes.onchange=()=>{style.styleNotes=notes.value;persist();};label.append(notes);wrap.append(label,preview,status);updatePreview();
+    const label=make("label","style-notes-label","Anything else about how I should sound?"),notes=make("textarea");notes.rows=2;notes.maxLength=800;notes.value=style.styleNotes||"";notes.placeholder="e.g. Simple English, a little cheeky, no therapy jargon";notes.onchange=()=>{style.styleNotes=notes.value;persist();};label.append(notes);wrap.append(label,preview,status);updatePreview();wrap.saveSettings=()=>{style.styleNotes=notes.value;return persist();};
     if(entry){const b=make("button","button-soft","Apply to this entry ↻");b.type="button";b.onclick=async()=>{if(state.processing.has(entry.id)){showToast("Wait for transcription to finish first.");return;}if(!await persist())return;const fresh=await transaction("entries","readonly",s=>s.get(entry.id));if(!fresh)return;fresh.summaryEdited=false;for(const part of fresh.parts||[])if(part.reflectionAnswer||part.interviewQuestion){part.summary="";part.bulletPoints=[];}await saveEntry(fresh);await refreshEntries();processEntry(entry.id);};wrap.append(b,make("p","tiny","Apply when you want a new version. Your current summary stays until then."));}
     return wrap;
   }
@@ -750,6 +766,7 @@
     $("reflectButton").onclick=()=>{const entry=currentEntry();if(entry)window.UnscriptedPerspective.open(entry.id);};
 
     $("privateSignOut").onclick=async()=>{if(state.recording){showToast("Save your recording first.");return;}try{const r=await fetch("/logout",{method:"POST"});if(!r.ok)throw Error("Sign-out failed");localStorage.removeItem("unscripted-access-code");sessionStorage.removeItem("unscripted-access-code");if("caches" in window)for(const name of await caches.keys())if(name.startsWith("unscripted-"))await caches.delete(name);location.reload();}catch(e){showToast(e.message);}};
+    $("saveSettingsButton").onclick=saveSettingsAndReturn;
     $("saveApiSettings").onclick=saveApiSettings;$("askForm").onsubmit=askDiary;document.querySelectorAll(".suggestion").forEach(b=>b.onclick=()=>{$("askInput").value=b.textContent;$("askInput").focus();});
     $("exportBackup").onclick=exportBackup;$("importBackup").onclick=()=>$("backupInput").click();$("backupInput").onchange=(e)=>importBackup(e.target.files[0]);
     $("accentPickerButton").onclick=openPicker;$("colourClose").onclick=()=>closePicker(false);$("doneAccent").onclick=()=>closePicker(true);$("resetAccent").onclick=()=>setPicker("#b8d2ab");$("colourModal").onclick=(e)=>{if(e.target===$("colourModal"))closePicker(false);};

@@ -155,3 +155,5 @@ html,body{font-family:var(--reading-font);font-size:var(--reading-size)}button,i
 .entry-action-row .button-soft:hover{background:color-mix(in srgb,var(--accent) 23%,var(--panel))}
 .entry-action-icon{height:16px;font-size:calc(16px * var(--text-scale,1))}
 @media(max-width:360px){.recording-player{grid-template-columns:36px minmax(0,1fr)}.recording-player-time{grid-column:2;grid-row:1;align-self:start}.recording-player input{align-self:end;height:16px;min-height:16px}}
+
+.settings-top-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:5px 0 22px}.settings-top-actions .back-link{margin:0}.settings-top-actions .button-primary{min-height:38px;padding:8px 15px;border-radius:12px;font-size:calc(12px * var(--text-scale,1))}

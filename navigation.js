@@ -8,6 +8,7 @@
     const previous=stack.findLastIndex(item=>same(item,route));
     if(previous>=0)stack.splice(previous+1);else stack.push(route);
   });
+  window.addEventListener("unscripted-back",()=>history.back());
   const panels=[
     ['appConfirmModal','appConfirmNo'],['cancelRecordingModal','keepRecordingButton'],
     ['colourModal','colourClose'],['editorModal','closeEditor'],['choiceModal','choiceClose'],
