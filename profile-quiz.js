@@ -22,6 +22,8 @@
     }
   }
   function buttons() {
+    $("quizRecorderControls").hidden=$("quizAnswerArea").hidden;
+    $("quizRecorderControls").classList.toggle("is-recording",!!voice);
     for(const id of ["interviewNewQuestion","interviewFollowQuestion","interviewFinish"])$(id).disabled=busy||!!voice||!!unsavedClip;
     $("quizNext").disabled = busy || !!voice || !!unsavedClip;
     $("quizSkip").disabled = busy || !!voice;
@@ -33,13 +35,13 @@
   }
 function cleanInterviewQuestion(text) {
   const uuid="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-  return String(text||"").replace(new RegExp("\\s*[([]\\s*(?:sources?\\s*:?\\s*)?"+uuid+"\\s*[)\\]]","gi"),"").replace(new RegExp("\\b(?:source\\s*:?\\s*)?"+uuid+"\\b","gi"),"").replace(/\s+([,.;?!])/g,"$1").replace(/ {2,}/g," ").trim();
+  return String(text||"").replace(/(^|\n)([AB])\s*[.):：-]\s*(?:\2\s*[.):：-]\s*)+/gi,"$1$2. ").replace(new RegExp("\\s*[([]\\s*(?:sources?\\s*:?\\s*)?"+uuid+"\\s*[)\\]]","gi"),"").replace(new RegExp("\\b(?:source\\s*:?\\s*)?"+uuid+"\\b","gi"),"").replace(/\s+([,.;?!])/g,"$1").replace(/ {2,}/g," ").trim();
 }
   function showQuestion() {
     $("interviewNextChoices").hidden=true;
     $("quizAnswerSummary").replaceChildren();
     showAnswerAudio(editing>=0?data.answers[editing]?.id:data.currentAnswerId);
-    $("quizReview").hidden = true; $("quizAnswerArea").hidden = false;
+    $("quizReview").hidden = true; $("quizAnswerArea").hidden = false;$("quizRecorderControls").hidden=false;
     $("quizProgress").textContent = editing >= 0 ? "Edit answer " + (editing + 1) : mode==="interview"?"One question at a time":"Question " + Math.min(data.answers.length+1,6) + " of 6";
     $("quizQuestion").textContent = cleanInterviewQuestion(editing >= 0 ? data.answers[editing].question : data.question);
     clarification?.reset(!!$("quizQuestion").textContent);
@@ -64,7 +66,7 @@ function cleanInterviewQuestion(text) {
     if(id)data.entryId=id;save();
   }
   function showInterviewChoices(){
-    $("quizAnswerArea").hidden=true;$("quizReview").hidden=true;$("interviewNextChoices").hidden=false;
+    $("quizAnswerArea").hidden=true;$("quizRecorderControls").hidden=true;$("quizReview").hidden=true;$("interviewNextChoices").hidden=false;
     $("quizProgress").textContent="Answer saved";$("quizQuestion").textContent="Where shall we go next?";
     $("quizSourceLinks").replaceChildren();clarification?.reset(false);tell("");buttons();
   }
@@ -136,7 +138,7 @@ function cleanInterviewQuestion(text) {
   function review() {
     if(mode==="interview"){finishedInterview();return;}
     clarification?.reset(false);
-    $("quizAnswerArea").hidden=true;$("quizReview").hidden=false;$("quizQuestion").textContent="Your answers";
+    $("quizAnswerArea").hidden=true;$("quizRecorderControls").hidden=true;$("quizReview").hidden=false;$("quizQuestion").textContent="Your answers";
     $("quizProgress").textContent=data.answers.length+" answers";$("quizSourceLinks").replaceChildren();
     $("quizReview").replaceChildren();
     data.answers.forEach((answer,index)=>{

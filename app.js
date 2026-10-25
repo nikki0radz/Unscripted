@@ -77,7 +77,7 @@
   }
   function revokeUrls() { state.urls.forEach((url) => URL.revokeObjectURL(url)); state.urls = []; }
   function openEntry(id) { state.searchTarget=null; state.selected = id; state.openTranscript = false; $("transcriptArea").hidden = true; $("transcriptToggle").setAttribute("aria-expanded", "false"); switchView("entry"); }
-  function interviewQuestionText(entry,part){return part.question||entry.interview?.answers?.find(x=>x.id===part.id)?.question||part.text?.match(/(?:Interview question|Question(?: \d+)?):\s*([^\n]+)/i)?.[1]||"Interview question";}
+  function interviewQuestionText(entry,part){const question=part.question||entry.interview?.answers?.find(x=>x.id===part.id)?.question||part.text?.match(/(?:Interview question|Question(?: \d+)?):\s*([^\n]+)/i)?.[1]||"Interview question";return question.replace(/(^|\n)([AB])\s*[.):：-]\s*(?:\2\s*[.):：-]\s*)+/gi,"$1$2. ");}
   function renderEntry() {
     const entry = currentEntry(); if (!entry) { switchView("home"); return; }
     document.querySelectorAll(".recording-player").forEach(player => player.dispose());

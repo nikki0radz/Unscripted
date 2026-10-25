@@ -16,7 +16,8 @@ async function ethicalDilemma(goal,previous,generate) {
     result.question=normaliseQuestion(result.question);
     if(result.safetyQuestion===true&&typeof result.question==="string"&&result.question.length<=600&&(result.question.match(/[?？]/g)||[]).length===1&&/[?？]$/.test(result.question.trim()))return {question:result.question.trim(),sourceIds:[]};
     if(typeof result.scenario!=="string"||!result.scenario.trim()||!Array.isArray(result.choices)||result.choices.length!==2||result.choices.some(c=>typeof c!=="string"||!c.trim())||typeof result.question!=="string")continue;
-    const question=result.scenario.trim()+"\n\nA. "+result.choices[0].trim()+"\nB. "+result.choices[1].trim()+"\n\n"+result.question.trim();
+    const unlabel=value=>value.trim().replace(/^(?:(?:[AB]\s*[.):：-]|\([AB]\))\s*)+/i,"");
+    const question=result.scenario.trim()+"\n\nA. "+unlabel(result.choices[0])+"\nB. "+unlabel(result.choices[1])+"\n\n"+result.question.trim();
     if(question.length>600||(question.match(/[?？]/g)||[]).length!==1||!/[?？]$/.test(question)||previous.some(x=>x.question.trim().toLowerCase()===question.toLowerCase()))continue;
     return {question,sourceIds:[]};
   }

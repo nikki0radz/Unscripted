@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {interview} from '../api/interview.js';
+const result=await interview({goal:'Moral dilemmas'},async()=>JSON.stringify({scenario:'A friend asks you to keep a secret that affects someone else.',choices:['A. A. Tell the truth.','B) B. Keep the secret.'],question:'Which would you choose, and why?'}));
+assert.match(result.question,/\nA\. Tell/);assert.match(result.question,/\nB\. Keep/);assert.doesNotMatch(result.question,/A\. A\.|B\. B\./);
+const source=fs.readFileSync('profile-quiz.js','utf8'),start=source.indexOf('function cleanInterviewQuestion('),end=source.indexOf('  function showQuestion()',start);
+const clean=new Function(source.slice(start,end)+'return cleanInterviewQuestion;')();
+assert.equal(clean('Scenario\nA. A. First choice\nB. B. Second choice\nWhich?'),'Scenario\nA. First choice\nB. Second choice\nWhich?');
+assert.equal(clean('What does A.A. mean to you?'),'What does A.A. mean to you?','do not change abbreviations within prose');
+console.log('Passed: choice labels render once, older backend output is cleaned, and prose abbreviations remain unchanged.');
