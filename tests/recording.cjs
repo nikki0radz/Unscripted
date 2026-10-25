@@ -37,7 +37,7 @@ const T=context.testRecording;
  assert.equal(audios.size,1);assert.equal(entries.get("entry").parts.length,1);
  T.state.view="settings";
  const answers=[{id:"q1",createdAt:new Date().toISOString(),question:"What matters?",answer:"Being fair",skipped:false,sourceIds:["entry"]},{id:"q2",question:"What next?",answer:"",skipped:true}];
- const interviewId=await T.saveInterview({goal:"Confidence",answers,complete:false},null);assert.equal(entries.get(interviewId).kind,"interview");assert.match(entries.get(interviewId).parts[0].text,/Being fair/);assert(entries.get(interviewId).parts[1].text.includes("Skipped"));
+ const interviewId=await T.saveInterview({goal:"Confidence",answers,complete:false},null);assert.equal(entries.get(interviewId).kind,"interview");assert.match(entries.get(interviewId).parts[0].text,/Being fair/);assert.equal(entries.get(interviewId).parts.length,1,"skipped questions are omitted");
  await T.saveInterview({goal:"Confidence",answers:[{...answers[0],answer:"Being honest"}],complete:true},interviewId);assert.equal(entries.get(interviewId).interview.complete,true);assert.equal(entries.get(interviewId).parts.length,1);assert.match(entries.get(interviewId).parts[0].text,/Being honest/);
  assert.equal(await T.saveInterview({goal:"Random",answers:[{question:"Q?",answer:"",skipped:true}],complete:false},null),null);
  T.state.selected=null;
