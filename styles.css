@@ -179,3 +179,5 @@ html,body{font-family:var(--reading-font);font-size:var(--reading-size)}button,i
 #textStyleControls>.live-reading-preview{grid-column:1/-1;background:var(--panel2);border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));border-radius:16px;padding:16px;overflow-wrap:anywhere}
 #textStyleControls .text-preview-title{font:600 12px/1.4 "DM Sans",system-ui,sans-serif!important}
 #quizQuestion,#perspectiveQuestion,.quiz-question,.reflection-question,#entryParts .reflection-question,.reflection-answer-card .reflection-question,.perspective-modal .quiz-question,.interview-card-question,.live-reading-preview .reading-preview-question{font-family:var(--question-font,var(--reading-font))!important}
+
+.record-section-divider{width:100%;height:1px;flex:none;margin:28px 0 4px;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--accent) 60%,transparent) 20%,color-mix(in srgb,var(--accent) 60%,transparent) 80%,transparent)}
