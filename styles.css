@@ -135,9 +135,6 @@ html,body{font-family:var(--reading-font);font-size:var(--reading-size)}button,i
 .live-reading-preview .text-preview-row h3{font-size:var(--heading-size)!important;line-height:1.3;margin:0;letter-spacing:normal}
 .live-reading-preview .reading-preview-question{font-size:var(--question-size)!important;font-family:var(--reading-font)!important;line-height:1.6;margin:0;letter-spacing:normal}
 .live-reading-preview .reading-preview-body{font-size:var(--reading-size)!important;font-family:var(--reading-font)!important;line-height:1.8;margin:0;letter-spacing:normal}
-/* Font choices are complete looks, previewed together in one selection. */
-.font-picker-label{grid-column:1/-1;font-size:12px!important;color:var(--text);font-weight:600;margin-bottom:-6px}.font-style-picker{display:grid;grid-template-columns:1fr 1fr;gap:10px;grid-column:1/-1}.font-style-card{display:flex;flex-direction:column;gap:9px;padding:14px;text-align:left;border:1px solid var(--line);border-radius:16px;background:var(--panel2);color:var(--text);min-width:0;transition:border-color .15s,background .15s}.font-style-card:hover{border-color:var(--accent)}.font-style-card[aria-pressed=true]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 9%,var(--panel2));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 18%,transparent)}.font-style-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;font:11px/1.4 "DM Sans",system-ui,sans-serif!important}.font-style-card-top strong{font-weight:600}.font-style-check{color:var(--accent);font-size:14px!important}.font-style-heading-sample{display:block;font-size:19px!important;line-height:1.35;letter-spacing:normal}.font-style-body-sample{display:block;font-size:12px!important;line-height:1.6;letter-spacing:normal}.font-style-card small{font:10px/1.5 "DM Sans",system-ui,sans-serif!important;color:var(--muted)}
-@media(max-width:420px){.font-style-picker{grid-template-columns:1fr}.font-style-card{padding:14px}}
 .record-heading,.record-timer,.quiz-question,.reflection-question{font-family:var(--heading-font)}
 .section-title-row h2,.entry-block h2,.settings-card h2,.entry-card h3,.empty-state strong,.collapse-trigger,.recorder-sheet h2,.modal-title-row h2{font-family:var(--heading-font)}
 .text-preview-caption,.font-style-card-top,.font-style-card small{font-family:var(--reading-font)!important}
@@ -173,3 +170,12 @@ html,body{font-family:var(--reading-font);font-size:var(--reading-size)}button,i
 .interview-card-content{padding:0 14px 14px}.interview-card-content .summary-text{margin-top:10px}
 .interview-added-thought{border-top:1px solid var(--line);padding-top:14px;margin-top:18px}
 .interview-add-thought{display:block!important;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line))!important;border-radius:20px!important;background:color-mix(in srgb,var(--accent) 9%,transparent)!important;color:var(--accent)!important;padding:7px 12px!important;text-decoration:none!important;margin:14px 0 0;font-size:calc(12px * var(--text-scale,1))!important}
+
+/* Three independent font rows, six compact previews in each. */
+.font-role-section{grid-column:1/-1;min-width:0}.font-role-title{font:600 12px/1.4 "DM Sans",system-ui,sans-serif!important;margin:0 0 9px;color:var(--text)}
+.font-bubble-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.font-choice-bubble{min-width:0;min-height:48px;padding:9px 3px;border:1px solid var(--line);border-radius:13px;background:var(--panel2);color:var(--text);line-height:1.2;letter-spacing:normal;overflow-wrap:anywhere;transition:background .15s,border-color .15s}
+.font-choice-bubble:hover{border-color:var(--accent)}.font-choice-bubble[aria-pressed=true]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 13%,var(--panel2));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 25%,transparent)}
+#textStyleControls>.live-reading-preview{grid-column:1/-1;background:var(--panel2);border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));border-radius:16px;padding:16px;overflow-wrap:anywhere}
+#textStyleControls .text-preview-title{font:600 12px/1.4 "DM Sans",system-ui,sans-serif!important}
+#quizQuestion,#perspectiveQuestion,.quiz-question,.reflection-question,#entryParts .reflection-question,.reflection-answer-card .reflection-question,.perspective-modal .quiz-question,.interview-card-question,.live-reading-preview .reading-preview-question{font-family:var(--question-font,var(--reading-font))!important}
