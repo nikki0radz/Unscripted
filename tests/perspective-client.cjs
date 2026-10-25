@@ -5,7 +5,7 @@ class Clock extends Date{static now(){return clock}}
 class Recorder{static isTypeSupported(){return true}constructor(){this.state='inactive';this.mimeType='audio/webm'}start(){this.state='recording'}stop(){this.state='inactive';this.ondataavailable({data:new Blob(['voice'],{type:'audio/webm'})});stopTask=this.onstop();}}
 const D={recording:()=>false,toast(){},perspectiveQuestion:async()=>({question:'Question '+(++questionCount)+'?',sourceIds:['past']}),
 savePerspective:async(id,doc)=>saves.push({id,...doc}),
-savePerspectiveClip:async(id,part,doc,blob,duration)=>{if(failSave){failSave=false;throw Error('Disk full')}clips.push({id,part,blob,duration});return part||'reflection-'+clips.length},
+savePerspectiveClip:async(id,part,doc,blob,duration)=>{if(failSave){failSave=false;throw Error('Disk full')}clips.push({id,part,blob,duration,parentQuestionId:doc.parentQuestionId});return part||'reflection-'+clips.length},
 finishPerspective:async(id,part,answer)=>saves.push({id,part,answer}),discardPerspective:async(id,part)=>discarded.push(part),processEntry:id=>processed.push(id)};
 const context={console,Blob,Date:Clock,MediaRecorder:Recorder,navigator:{mediaDevices:{getUserMedia:async()=>({getTracks:()=>[{stop(){tracksStopped++}}]})}},
 setTimeout:(fn,ms)=>{if(ms===120000)rotations.push(fn);else setImmediate(fn);return 1},setInterval:()=>1,clearInterval(){},clearTimeout(){},cancelAnimationFrame(){},
@@ -27,5 +27,10 @@ await el('perspectiveSave').onclick();assert(saves[1].part);assert.equal(process
 await P.open('entry');await el('perspectiveRecord').onclick();clock+=2000;await el('perspectiveRecord').onclick();await stopTask;await el('perspectiveCancel').onclick();assert.equal(discarded.length,1,'cancel explicitly discards autosaved draft');
 await P.open('entry');await el('perspectiveRecord').onclick();failSave=true;clock+=2000;await el('perspectiveRecord').onclick();await stopTask;assert.match(el('perspectiveStatus').textContent,/Could not save/);await el('perspectiveSave').onclick();assert.equal(processed.length,3,'failed final clip retried on save');assert.equal(el('perspectiveModal').hidden,true);
 assert(tracksStopped>=3);
+D.entries=()=>[{id:'entry',parts:[{id:'q1',question:'Original interview question?'}]}];
+const count=questionCount;await P.addToQuestion('entry','q1');assert.equal(questionCount,count,'adding a thought does not generate a new question');assert.equal(el('perspectiveAnother').hidden,true);
+await el('perspectiveRecord').onclick();clock+=2000;await el('perspectiveRecord').onclick();await stopTask;assert.equal(clips.at(-1).parentQuestionId,'q1');await el('perspectiveSave').onclick();
+await P.addToQuestion('entry','q1');el('perspectiveAnswer').value='After our discussion, another thought.';await el('perspectiveSave').onclick();assert.equal(saves.at(-1).parentQuestionId,'q1');assert.match(saves.at(-1).answer,/discussion/);
+
 console.log('Passed: typed save, 12-minute recording with independent saved clips, pause/resume, stop/save processing, cancel cleanup and failed-clip retry.');
 })().catch(e=>{console.error(e);process.exit(1)});

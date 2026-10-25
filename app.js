@@ -22,6 +22,7 @@
   const saveAudio = (id, blob) => transaction("audio", "readwrite", (s) => s.put({ id, blob }));
   const deleteAudio = (id) => transaction("audio", "readwrite", (s) => s.delete(id));
   async function refreshEntries() { state.entries = (await transaction("entries", "readonly", (s) => s.getAll()) || []).sort((a, b) => b.createdAt.localeCompare(a.createdAt)); }
+  const expandedInterviewQuestions=new Set();
   const currentEntry = () => state.entries.find((entry) => entry.id === state.selected);
   const allParts = (entry) => entry.parts || [];
   const allClips = (entry) => allParts(entry).filter((p) => p.type === "recording" || p.reflectionAnswer || p.interviewQuestion).flatMap((p) => p.clips || []);
@@ -90,21 +91,36 @@
     const summarySection=$("entrySummary").closest("section");
     if(entry.kind==="interview")$("entryParts").previousElementSibling.before(summarySection);
     else $("entryStatus").after(summarySection);
+    let resume=$("continueSavedInterview");if(!resume){resume=make("button","button-soft","✦ Continue interview");resume.id="continueSavedInterview";resume.type="button";$("interviewEntryStatus").after(resume);}
+    resume.hidden=entry.kind!=="interview";resume.onclick=()=>window.UnscriptedQuiz?.continueSaved(entry.id);
     const clips = allClips(entry);
     $("entryDuration").textContent = `${sortedParts(entry).filter((p) => p.type === "recording").length} recording(s) · ${audioTime(totalTime(entry))} of audio · ${sortedParts(entry).filter((p) => p.type === "note" && !p.reflectionAnswer).length} written note(s) · ${sortedParts(entry).filter(p=>p.reflectionAnswer).length} reflection(s)`;
+    if(entry.kind==="interview")$("entryDuration").textContent=sortedParts(entry).filter(p=>p.interviewQuestion).length+" questions"+(clips.length?" · "+audioTime(totalTime(entry))+" of audio":"");
     const container = $("entryParts"); container.replaceChildren();
     sortedParts(entry).filter(part => !part.reflectionAnswer).forEach((part, index) => {
       const box = make("div", "part-card"); const head = make("div", "part-head");
       head.append(make("strong", "", part.type === "note" ? (part.interviewQuestion ? "✦ Interview question " : "✎ Written addition ") + (index + 1) : ""), make("small", "", fmtDate(part.createdAt) + " · " + fmtTime(part.createdAt)));
       box.append(head);
       if(part.interviewQuestion){
-        box.append(make("h3","reflection-question",interviewQuestionText(entry,part)));
-        if(part.clips?.length)box.append(window.UnscriptedRecordingPlayer.create(part.clips,getAudio,"interview answer"));
-        const pending=(part.clips||[]).some(c=>!c.transcript&&!c.transcriptionComplete);
-        if(pending){const retry=make("button","text-action","⚠ Continue transcription");retry.onclick=()=>processEntry(entry.id);box.append(retry);}
-        box.append(summarySwitch(part.id,part.summary,part.bulletPoints,()=>processEntry(entry.id)));
-        const details=make("details","reflection-transcript");details.append(make("summary","","Full answer"),make("p","reflection-answer-text",part.answer||part.text||"Audio saved; transcript pending."));box.append(details);
-        container.append(box);return;
+        const additions=sortedParts(entry).filter(p=>p.parentQuestionId===part.id);
+        const card=make("details","interview-question-card"),key=entry.id+":"+part.id;
+        card.open=expandedInterviewQuestions.has(key);card.ontoggle=()=>{if(card.open)expandedInterviewQuestions.add(key);else expandedInterviewQuestions.delete(key);};
+        const heading=make("summary","interview-card-heading");
+        heading.append(make("h3","interview-card-question",interviewQuestionText(entry,part)),make("p","interview-answer-preview",part.summary||part.answer||"Audio saved · transcript pending"));
+        const clips=[part,...additions].flatMap(p=>p.clips||[]);
+        heading.append(make("span","interview-card-meta",(clips.length?clips.length+" audio clip"+(clips.length===1?"":"s"):"Written answer")+(additions.length?" · "+additions.length+" added thought"+(additions.length===1?"":"s"):"")+" · Expand ⌄"));
+        card.append(heading);
+        const content=make("div","interview-card-content");
+        function answerSection(item,extra=false){
+          const section=make("section",extra?"interview-added-thought":"interview-original-answer");
+          if(extra)section.append(make("div","tiny","Added thought · "+fmtDate(item.createdAt)));
+          if(item.clips?.length)section.append(window.UnscriptedRecordingPlayer.create(item.clips,getAudio,extra?"added thought":"interview answer"));
+          if((item.clips||[]).some(c=>!c.transcript&&!c.transcriptionComplete)){const retry=make("button","text-action","⚠ Continue transcription");retry.onclick=()=>processEntry(entry.id);section.append(retry);}
+          section.append(summarySwitch(item.id,item.summary,item.bulletPoints,()=>processEntry(entry.id)));
+          const transcript=make("details","reflection-transcript");transcript.append(make("summary","","Full transcript"),make("p","reflection-answer-text",item.answer||"Audio saved; transcript pending."));section.append(transcript);content.append(section);
+        }
+        answerSection(part);for(const item of additions)answerSection(item,true);
+        const add=make("button","interview-add-thought","＋ Add a thought");add.type="button";add.onclick=()=>window.UnscriptedPerspective?.addToQuestion(entry.id,part.id);content.append(add);card.append(content);container.append(card);return;
       }
       if (part.type === "note") {
         box.append(make("p", "", part.text || ""));
@@ -369,7 +385,7 @@
       sourceIds:Array.isArray(answer.sourceIds)?answer.sourceIds:[]
     }));
     entry.parts=[...notes,...allParts(entry).filter(part=>!part.interviewQuestion||(part.interviewPending&&!notes.some(n=>n.id===part.id)))];
-    entry.interview={goal:document.goal,complete:!!document.complete,answers:answered,updatedAt:new Date().toISOString()};
+    entry.interview={goal:document.goal,followUp:!!document.followUp,complete:!!document.complete,answers:answered,updatedAt:new Date().toISOString()};
     entry.tags=[...new Set([...(entry.tags||[]),"Interview"])];
     entry.userTags=[...new Set([...(entry.userTags||[]),"Interview"])];
     await saveEntry(entry);await refreshEntries();if(state.view==="home")renderHome();
@@ -460,7 +476,7 @@
         if(state.view==="entry"&&state.selected===id)renderEntry();
       }
       if(entry.kind==="interview"&&!entry.interview?.complete)return;
-      const content = sortedParts(entry).filter(p=>!p.reflectionAnswer).map((part) => ({ createdAt: part.createdAt, type: part.type, text: part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || "").join(" ") })).filter((p) => p.text?.trim());
+      const content = sortedParts(entry).filter(p=>!p.reflectionAnswer||p.parentQuestionId).map((part) => ({ createdAt: part.createdAt, type: part.type, text: part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || "").join(" ") })).filter((p) => p.text?.trim());
       if (!content.length) { if(allParts(entry).some(p=>p.reflectionAnswer&&p.summary))return; throw new Error("There's no transcribed or written text to summarise yet."); }
       const data = await callAI("/organize", { content, style:summaryStyle(entry), existingTitle: entry.title, existingTags: entry.tags || [], personalProfile: (localStorage.getItem("unscripted-personal-profile") || "").slice(0,4000) });
       const fresh = await transaction("entries", "readonly", store => store.get(id));
@@ -627,7 +643,7 @@
   function renderReflection(entry) {
     $("reflectionQuestion").hidden=true;
     const target=$("reflectionSources");target.replaceChildren();
-    const saved=sortedParts(entry).filter(part=>part.reflectionAnswer);
+    const saved=sortedParts(entry).filter(part=>part.reflectionAnswer&&!part.parentQuestionId);
     const legacy=(entry.reflections||[]).map(item=>({...item,legacy:true}));
     for(const item of [...legacy,...saved]){
       const card=make("section","reflection-answer-card");
@@ -671,7 +687,7 @@
       const tx=state.db.transaction(["entries","audio"],"readwrite"),store=tx.objectStore("entries"),req=store.get(id);
       req.onsuccess=()=>{const entry=req.result;if(!entry){tx.abort();return;}
         let part=entry.parts.find(p=>p.id===reflectionId);
-        if(!part){part={id:reflectionId,type:"note",reflectionAnswer:true,reflectionDraft:true,createdAt:new Date().toISOString(),question:doc.question,sourceIds:doc.sourceIds||[],answer:"",text:"Reflection question: "+doc.question,clips:[]};entry.parts.push(part);}
+        if(!part){part={id:reflectionId,type:"note",reflectionAnswer:true,parentQuestionId:doc.parentQuestionId||null,reflectionDraft:true,createdAt:new Date().toISOString(),question:doc.question,sourceIds:doc.sourceIds||[],answer:"",text:"Reflection question: "+doc.question,clips:[]};entry.parts.push(part);}
         part.clips.push({id:clipId,duration,mime:blob.type,transcript:""});
         tx.objectStore("audio").put({id:clipId,blob});entry.updatedAt=new Date().toISOString();store.put(entry);
       };tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error("Could not save this audio."));
@@ -699,7 +715,7 @@
     await new Promise((resolve,reject)=>{
       const tx=state.db.transaction(["entries","audio"],"readwrite"),entries=tx.objectStore("entries"),req=entries.get(id);
       req.onsuccess=()=>{const entry=req.result;if(!entry){tx.abort();return;}
-        const part={id:uid(),type:"note",reflectionAnswer:true,createdAt:new Date().toISOString(),question:doc.question,answer:doc.answer.trim(),sourceIds:doc.sourceIds||[],
+        const part={id:uid(),type:"note",reflectionAnswer:true,parentQuestionId:doc.parentQuestionId||null,createdAt:new Date().toISOString(),question:doc.question,answer:doc.answer.trim(),sourceIds:doc.sourceIds||[],
           text:"Reflection question: "+doc.question+"\nYour answer: "+doc.answer.trim(),clips:audioRows.map(row=>({id:row.id,duration:row.duration,mime:row.blob.type,transcript:doc.answer.trim()}))};
         for(const row of audioRows)tx.objectStore("audio").put({id:row.id,blob:row.blob});
         entry.parts=[...(entry.parts||[]),part];entry.updatedAt=part.createdAt;entries.put(entry);
@@ -707,7 +723,7 @@
       tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error("Could not save this reflection. The entry may have been deleted."));
     });
     await refreshEntries();window.dispatchEvent(new Event("unscripted-change"));
-    if(state.selected===id){renderEntry();document.querySelector(".reflection-card").scrollIntoView({behavior:"smooth",block:"start"});}
+    if(state.selected===id){renderEntry();if(!doc.parentQuestionId)document.querySelector(".reflection-card").scrollIntoView({behavior:"smooth",block:"start"});}
   }
   async function deleteEntry() { const entry = currentEntry(); if (!entry || !await window.UnscriptedConfirm("Delete this entry and all its audio? This cannot be undone. Older cloud backups may still contain it.",{title:"Delete this entry?",confirmLabel:"Delete entry",danger:true})) return; try { for (const clip of allClips(entry)) await deleteAudio(clip.id); await transaction("entries", "readwrite", (s) => s.delete(entry.id)); await refreshEntries(); window.dispatchEvent(new Event("unscripted-change")); switchView("home"); showToast("Entry deleted. Older cloud backups may still contain this entry."); } catch (error) { showToast("Delete failed: " + error.message); } }
   function blobToDataURL(blob) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob); }); }

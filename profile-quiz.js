@@ -60,7 +60,7 @@ function cleanInterviewQuestion(text) {
     }
   }
   async function saveInterviewProgress(complete=false) {
-    const id=await window.UnscriptedDiary.saveInterview({goal:mode==="interview"?data.goal:modes[mode].title,answers:data.answers,complete},data.entryId);
+    const id=await window.UnscriptedDiary.saveInterview({goal:mode==="interview"?data.goal:modes[mode].title,answers:data.answers,complete,followUp:!!data.followUp},data.entryId);
     if(id)data.entryId=id;save();
   }
   function showInterviewChoices(){
@@ -332,7 +332,7 @@ function cleanInterviewQuestion(text) {
     setupFollowUp=false;
     if(window.UnscriptedDiary.recording()){window.UnscriptedDiary.toast("Finish your recording first.");return;}
     if(!window.UnscriptedDiary.activeAI()){window.UnscriptedDiary.toast("Connect AI or sign in first.");return;}
-    const draft=load("interview");$("interviewResume").hidden=!(draft.question||draft.answers.length)&&!draft.entryId;
+    const draft=load("interview");$("interviewResume").hidden=true;
     $("interviewSetupModal").hidden=false;
   };
   $("interviewSetupClose").onclick=()=>{$("interviewSetupModal").hidden=true;};
@@ -342,13 +342,20 @@ function cleanInterviewQuestion(text) {
     const goal=$("interviewFocus").value==="custom"?$("interviewCustomGoal").value.trim():($("interviewFocus").value||"Surprise me");
     if(!goal){window.UnscriptedDiary.toast("Add a goal, or choose Surprise me.");return;}
     const draft=load("interview");
-    if((draft.answers.length||draft.question)&&!await window.UnscriptedConfirm("A new interview will replace the unfinished quiz. Answers already saved as a diary entry will stay.",{title:"Start a new interview?",confirmLabel:"Start new"}))return;
+
     window.UnscriptedInterviewHistory?.excluded(window.UnscriptedDiary.entries(),draft);
     $("interviewSetupModal").hidden=true;await open("interview",{fresh:true,goal:setupFollowUp?"Follow up on recent plans":goal.slice(0,200),followUp:setupFollowUp});
   };
   document.addEventListener("keydown",event=>{if(event.key==="Escape"&&!$("interviewSetupModal").hidden)$("interviewSetupModal").hidden=true;});
   window.addEventListener("beforeunload",e=>{if(voice||unsavedClip){e.preventDefault();e.returnValue="";}});
-  window.UnscriptedQuiz={recording:()=>!!voice,startFollowUp:async()=>{
+  async function continueSaved(entryId){
+    const entry=window.UnscriptedDiary.entries().find(e=>e.id===entryId);if(!entry)return;
+    const answers=(entry.parts||[]).filter(p=>p.interviewQuestion&&!p.skipped&&!p.interviewPending).map(p=>({id:p.id,question:p.question,answer:p.answer||'',hasAudio:!!p.clips?.length,createdAt:p.createdAt,skipped:false,sourceIds:p.sourceIds||[]}));
+    const pending=(entry.parts||[]).find(p=>p.interviewQuestion&&p.interviewPending);
+    const resumed={answers,question:pending?.question||'',draft:pending?.answer||'',currentAnswerId:pending?.id||null,entryId,goal:entry.interview?.goal||'Surprise me',followUp:!!entry.interview?.followUp,complete:false,awaitingChoice:!pending,continuation:'fresh'};
+    localStorage.setItem(modes.interview.key,JSON.stringify(resumed));await open('interview');
+  }
+  window.UnscriptedQuiz={continueSaved,recording:()=>!!voice,startFollowUp:async()=>{
     $("interviewStartButton").onclick();if($("interviewSetupModal").hidden)return;
     setupFollowUp=true;return $("interviewBegin").onclick();
   }};
