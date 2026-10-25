@@ -27,7 +27,7 @@
     $("quizSkip").disabled = busy || !!voice;
     $("quizRefresh").disabled = busy || !!voice || !!data?.currentAnswerId;
     $("quizVoice").disabled = busy || !!voice?.saving;
-    $("quizPause").hidden = !voice || mode!=="interview";
+    $("quizPause").hidden = !voice;
     $("quizAnswer").disabled = busy || !!voice;
     $("quizClose").disabled = busy; $("quizFinishEarly").disabled=busy||!!voice;
   }
@@ -38,6 +38,7 @@ function cleanInterviewQuestion(text) {
   function showQuestion() {
     $("interviewNextChoices").hidden=true;
     $("quizAnswerSummary").replaceChildren();
+    showAnswerAudio(editing>=0?data.answers[editing]?.id:data.currentAnswerId);
     $("quizReview").hidden = true; $("quizAnswerArea").hidden = false;
     $("quizProgress").textContent = editing >= 0 ? "Edit answer " + (editing + 1) : mode==="interview"?"One question at a time":"Question " + Math.min(data.answers.length+1,6) + " of 6";
     $("quizQuestion").textContent = cleanInterviewQuestion(editing >= 0 ? data.answers[editing].question : data.question);
@@ -59,7 +60,7 @@ function cleanInterviewQuestion(text) {
     }
   }
   async function saveInterviewProgress(complete=false) {
-    const id=await window.UnscriptedDiary.saveInterview({goal:data.goal,answers:data.answers,complete},data.entryId);
+    const id=await window.UnscriptedDiary.saveInterview({goal:mode==="interview"?data.goal:modes[mode].title,answers:data.answers,complete},data.entryId);
     if(id)data.entryId=id;save();
   }
   function showInterviewChoices(){
@@ -103,6 +104,7 @@ function cleanInterviewQuestion(text) {
         tell("Interview saved to your diary. Your answers are marked as an interview, with a summary on the way.");
         review();return;
       }
+      if(data.entryId)await saveInterviewProgress(true);
       const result=await window.UnscriptedDiary.callAI("/profile-quiz",{mode,action:"profile",answers:data.answers});
       if(typeof result.profile!=="string")throw new Error("AI did not return your profile. Try saving again.");
       localStorage.setItem(modes[mode].context,result.profile.slice(0,4000));
@@ -130,7 +132,10 @@ function cleanInterviewQuestion(text) {
       q.textContent=cleanInterviewQuestion(answer.question);a.textContent=answer.answer||"Skipped";
       edit.type="button";edit.className="text-action";edit.textContent="Edit answer";
       edit.onclick=()=>{editing=index;$("quizAnswer").value=answer.answer||"";tell("");showQuestion();};
-      card.append(q,a,edit);$("quizReview").append(card);
+      card.append(q,a,edit);
+      const savedPart=window.UnscriptedDiary.entries().find(e=>e.id===data.entryId)?.parts?.find(p=>p.id===answer.id);
+      if(savedPart?.clips?.length&&window.UnscriptedRecordingPlayer)card.append(window.UnscriptedRecordingPlayer.create(savedPart.clips,window.UnscriptedDiary.audio,"saved answer"));
+      $("quizReview").append(card);
     });
     const refresh=document.createElement("button");refresh.type="button";refresh.className="button-soft";refresh.textContent=mode==="interview"?(data.entryId?"Open saved interview":"Start another interview"):"Refresh personalised context";refresh.onclick=()=>{if(busy)return;if(mode==="interview"){ $("quizModal").hidden=true;if(data.entryId)window.UnscriptedDiary.openEntry(data.entryId);else $("interviewStartButton").onclick();}else buildContext();};$("quizReview").append(refresh);
   }
@@ -146,7 +151,7 @@ function cleanInterviewQuestion(text) {
     if(mode==="interview"&&data.awaitingChoice){showInterviewChoices();return;}
     if(mode!=="interview"&&data.answers.length>=6){await buildContext();return;}
     if(!data.question)await nextQuestion();
-    else if(mode==="interview"&&data.currentAnswerId)await retryInterviewAnswer();
+    else if(data.currentAnswerId)await retryInterviewAnswer();
   }
   async function advance(skip=false) {
     if(busy||voice)return;
@@ -168,7 +173,7 @@ function cleanInterviewQuestion(text) {
       if(mode==="interview"){
         data.awaitingChoice=!skip;data.continuation="fresh";save();await saveInterviewProgress(false);
         if(skip)await nextQuestion();else showInterviewChoices();
-      }else if(data.answers.length>=6)await buildContext();else await nextQuestion();
+      }else {if(data.entryId)await saveInterviewProgress(false);if(data.answers.length>=6)await buildContext();else await nextQuestion();}
     }catch(error){tell("Your answer is kept in this quiz, but saving failed: "+error.message,true);}
     finally{busy=false;buttons();}
   }
@@ -205,9 +210,18 @@ function cleanInterviewQuestion(text) {
   }
 
 
+  let answerPlayer=null;
+  function showAnswerAudio(answerId=data?.currentAnswerId){
+    answerPlayer?.dispose();answerPlayer?.remove();answerPlayer=null;
+    const entry=window.UnscriptedDiary.entries().find(e=>e.id===data?.entryId);
+    const part=entry?.parts?.find(p=>p.id===answerId);
+    if(!part?.clips?.length||!window.UnscriptedRecordingPlayer)return;
+    answerPlayer=window.UnscriptedRecordingPlayer.create(part.clips,window.UnscriptedDiary.audio,"your saved answer");
+    $("quizAnswerSummary").before(answerPlayer);
+  }
   function showAnswerSummary(result) {
     $("quizAnswer").value=result.answer;
-    data.draft=result.answer;save();
+    data.draft=result.answer;save();showAnswerAudio();
     $("quizAnswerSummary").replaceChildren(window.UnscriptedDiary.summarySwitch("interview-draft-"+data.currentAnswerId,result.summary,result.bulletPoints,()=>retryInterviewAnswer()));
   }
   async function retryInterviewAnswer(){
@@ -215,11 +229,11 @@ function cleanInterviewQuestion(text) {
     try{
       if(unsavedClip){await saveInterviewAudio(unsavedClip.blob,unsavedClip.duration);unsavedClip=null;}
       const result=await window.UnscriptedDiary.transcribeInterviewAnswer(data.entryId,data.currentAnswerId);showAnswerSummary(result);tell("Answer saved. Tap Next question when ready.");$("quizRetryAnswer").hidden=true;
-    }catch(e){tell("Your audio is saved in the interview. "+e.message,true);$("quizRetryAnswer").hidden=false;}
+    }catch(e){tell("Your original audio is saved. "+e.message,true);$("quizRetryAnswer").hidden=false;}
     finally{busy=false;buttons();}
   }
   async function saveInterviewAudio(blob,duration){
-    const result=await window.UnscriptedDiary.saveInterviewClip(data.entryId,data.currentAnswerId,{goal:data.goal,question:data.question,sourceIds:data.questionSources,typedAnswer:$("quizAnswer").value.trim()},blob,duration);
+    const result=await window.UnscriptedDiary.saveInterviewClip(data.entryId,(editing>=0?data.answers[editing].id:data.currentAnswerId),{goal:mode==="interview"?data.goal:modes[mode].title,question:editing>=0?data.answers[editing].question:data.question,sourceIds:data.questionSources,typedAnswer:$("quizAnswer").value.trim()},blob,duration);
     data.entryId=result.entryId;data.currentAnswerId=result.answerId;save();
   }
   function releaseInterviewVoice(v){clearInterval(v.indicatorTimer);clearTimeout(v.rotation);stopVoiceIndicator(v);v.stream.getTracks().forEach(t=>t.stop());if(voice===v)voice=null;$("quizVoice").textContent="🎙 Record your answer";$("quizPause").hidden=true;}
@@ -263,40 +277,7 @@ function cleanInterviewQuestion(text) {
   document.addEventListener("visibilitychange",()=>{if(document.hidden&&voice?.kind==="interview"&&!voice.paused)$("quizPause").onclick();});
   async function recordVoice() {
     if(busy)return;
-    if(mode==="interview")return recordInterviewVoice();
-    if(voice){voice.recorder.stop();return;}
-    if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){tell("Voice answers need microphone support. You can type instead.",true);return;}
-    const requestEpoch=epoch;busy=true;buttons();
-    let stream;
-    try {
-      stream=await navigator.mediaDevices.getUserMedia({audio:true});
-      if(requestEpoch!==epoch){stream.getTracks().forEach(t=>t.stop());return;}
-      const mime=["audio/webm;codecs=opus","audio/mp4","audio/webm"].find(x=>MediaRecorder.isTypeSupported(x));
-      const recorder=new MediaRecorder(stream,mime?{mimeType:mime,audioBitsPerSecond:48000}:{});
-      const parts=[];let size=0;
-      const recording={recorder,stream,timer:null,cancelled:false};voice=recording;
-      recorder.ondataavailable=e=>{if(e.data?.size){parts.push(e.data);size+=e.data.size;$("quizAudioCaptured").textContent="Audio captured";if(size>24*1024*1024&&recorder.state==="recording")recorder.stop();}};
-      recorder.onerror=()=>{stopVoiceIndicator(recording);recording.cancelled=true;tell("Voice recording failed. Please type or try again.",true);try{recorder.stop()}catch{};stream.getTracks().forEach(t=>t.stop());};
-      recorder.onstop=async()=>{
-        stopVoiceIndicator(recording);clearTimeout(recording.timer);stream.getTracks().forEach(t=>t.stop());voice=null;busy=true;$("quizVoice").textContent="Record answer";buttons();
-        try {
-          if(recording.cancelled)return;
-          if(size>24*1024*1024)throw new Error("That answer is too large to transcribe. Try a shorter recording.");
-          const blob=new Blob(parts,{type:recorder.mimeType||mime||"audio/webm"});
-          if(!blob.size)throw new Error("No audio captured.");
-          tell("Transcribing your answer...");
-          const form=new FormData();form.append("file",blob,blob.type.includes("mp4")?"answer.m4a":"answer.webm");
-          const result=await window.UnscriptedDiary.callAI("/transcribe",form,true);
-          if(requestEpoch!==epoch)return;
-          $("quizAnswer").value=[$("quizAnswer").value.trim(),result.text||""].filter(Boolean).join("\n");
-          tell("Check or edit the transcript, then tap Next. The audio itself is not added to your diary.");
-        } catch(error){tell(error.message,true);}
-        finally{busy=false;buttons();}
-      };
-      recorder.start(1000);startVoiceIndicator(recording);recording.timer=setTimeout(()=>{if(recorder.state==="recording")recorder.stop();},300000);
-      $("quizVoice").textContent="Stop & transcribe";tell("Recording your answer. Tap Stop & transcribe when finished.");
-    } catch(error){if(voice)stopVoiceIndicator(voice);stream?.getTracks().forEach(t=>t.stop());voice=null;tell("Could not record: "+error.message,true);}
-    finally{busy=false;buttons();}
+    return recordInterviewVoice();
   }
   $("quizRefresh").onclick=async()=>{
     if(busy||voice||editing>=0)return;
@@ -307,8 +288,9 @@ function cleanInterviewQuestion(text) {
   $("quizNext").onclick=()=>advance(false);$("quizSkip").onclick=()=>advance(true);$("quizVoice").onclick=recordVoice;
   $("quizClose").onclick=async()=>{
     if(busy)return;
-    if(mode==="interview"&&voice){await stopInterviewVoice();}
+    if(voice?.kind==="interview"){await stopInterviewVoice();}
     if(voice&&!await window.UnscriptedConfirm("Saved quiz answers will stay, but this unfinished voice answer will be discarded.",{title:"Close this voice answer?",confirmLabel:"Discard voice answer",danger:true}))return;
+    answerPlayer?.pause();
     epoch++;clarification?.reset(false);
     if(voice){voice.cancelled=true;voice.recorder.stop();}
     if(mode&&data&&$("quizAnswer").value.trim()){

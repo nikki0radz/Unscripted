@@ -12,6 +12,12 @@ window:{UnscriptedConfirm:async()=>true,MediaRecorder:Recorder,dispatchEvent(){}
  if(body.action==="question")return{question:"Question "+(body.answers.length+1)+" about "+body.mode+"?"};
  profileCalls++;return{profile:body.answers.map(x=>x.answer).join("; ")};
 }}}};
+const profileAudio=[];
+Object.assign(context.window.UnscriptedDiary,{
+ saveInterviewClip:async(entryId,answerId,doc,blob,duration)=>{profileAudio.push({blob,duration,goal:doc.goal});return {entryId:entryId||"profile-audio",answerId:answerId||"profile-answer"}},
+ transcribeInterviewAnswer:async()=>({answer:"A transcribed answer.",summary:"Saved answer",bulletPoints:[]}),
+ summarySwitch:()=>el()
+});
 vm.runInNewContext(fs.readFileSync("profile-quiz.js","utf8"),context);
 (async()=>{
  await $("knowQuiz").children[0].onclick();
@@ -27,8 +33,10 @@ vm.runInNewContext(fs.readFileSync("profile-quiz.js","utf8"),context);
  await $("quizVoice").onclick();assert.equal($("quizRecordingIndicator").hidden,false);assert.equal($("quizRecordingTimer").textContent,"00:00");
  await $("quizVoice").onclick();await stopTask;assert.equal($("quizRecordingIndicator").hidden,true);
  assert.match($("quizAnswer").value,/transcribed answer/);
+ assert.equal(profileAudio.length,1);assert.equal(profileAudio[0].goal,"Reflection context");assert(profileAudio[0].blob.size>0,"profile voice audio is durably saved before transcription");
  await $("quizNext").onclick();
  assert.match(JSON.parse(store.get("unscripted-reflection-quiz")).answers[0].answer,/transcribed/);
+ assert.equal(interviews.at(-1).answers[0].id,"profile-answer");assert.equal(interviews.at(-1).answers[0].hasAudio,true);
  await $("quizClose").onclick();$("interviewStartButton").onclick();$("interviewFocus").value="Build grounded self-confidence";await $("interviewBegin").onclick();
  const originalAI=context.window.UnscriptedDiary.callAI;
  $("quizAnswer").value="Keep this unfinished answer";
