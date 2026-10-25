@@ -1,5 +1,5 @@
-const CACHE = 'unscripted-v35';
-const ASSETS = ['./', './index.html', './styles.css', './app.js', './text-style.js', './recording-player.js', './manifest.webmanifest', './icon.svg', './icon-192.svg', './icon-512.svg', './icon-192.png', './icon-512.png', './install.js', './backup-crypto.js', './cloud-backup.js', './profile-quiz.js', './interview-topics.js', './perspective.js', './clarify-question.js', './dialogs.js', './passkey-client.js', './app-lock-init.js', './app-lock.js'];
+const CACHE = 'unscripted-v36';
+const ASSETS = ['./', './index.html', './styles.css', './app.js', './navigation.js', './text-style.js', './recording-player.js', './manifest.webmanifest', './icon.svg', './icon-192.svg', './icon-512.svg', './icon-192.png', './icon-512.png', './install.js', './backup-crypto.js', './cloud-backup.js', './profile-quiz.js', './interview-topics.js', './perspective.js', './clarify-question.js', './dialogs.js', './passkey-client.js', './app-lock-init.js', './app-lock.js'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });

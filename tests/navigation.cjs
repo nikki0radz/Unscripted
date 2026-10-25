@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+const events={},elements=new Map(),routes=[];let guards=0,recording=false;
+const context={history:{pushState:()=>guards++},location:{href:'https://diary.test/'},document:{getElementById:id=>elements.get(id)},window:{addEventListener:(name,fn)=>events[name]=fn,UnscriptedDiary:{recording:()=>recording,navigateBack:route=>{routes.push(route);events['unscripted-navigate']({detail:route});}}}};
+vm.runInNewContext(fs.readFileSync('navigation.js','utf8'),context);
+const go=(view,id)=>events['unscripted-navigate']({detail:{view,id}}),back=()=>events.popstate();
+go('entry','one');go('settings');back();assert.equal(routes.at(-1).id,'one');back();assert.equal(routes.at(-1).view,'home');const count=routes.length;back();assert.equal(routes.length,count,'home Back stays in app');
+go('ask');go('chat','chat-1');let closed=0;elements.set('quizModal',{hidden:false});elements.set('quizClose',{click:()=>{closed++;elements.get('quizModal').hidden=true}});back();assert.equal(closed,1);assert.equal(routes.length,count,'close modal before navigating');back();assert.equal(routes.at(-1).view,'ask');
+elements.set('recorderSheet',{hidden:false});elements.set('cancelRecordingButton',{click:()=>closed++});back();assert.equal(closed,2,'recording uses existing discard confirmation');elements.get('recorderSheet').hidden=true;
+go('settings');recording=true;const n=routes.length;back();assert.equal(routes.length,n,'active recordings block navigation');recording=false;back();assert.equal(routes.at(-1).view,'ask');
+assert(guards>1);console.log('Passed: Back restores screens/chats, closes panels first, protects recordings and keeps the home screen open.');

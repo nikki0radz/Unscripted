@@ -34,6 +34,7 @@
     if (state.recording) { showToast("Save or pause your recording first."); return; }
     if (view !== "entry") document.querySelectorAll?.(".recording-player").forEach(player => player.pause());
     state.view = view;
+    window.dispatchEvent(new CustomEvent("unscripted-navigate",{detail:{view,id:view==="entry"?state.selected:view==="chat"?activeChatId:undefined}}));
     for (const id of ["homeView", "entryView", "askView", "settingsView"]) $(id).hidden = id !== ({ home: "homeView", entry: "entryView", ask: "askView", settings: "settingsView" }[view]);
     $("navLibrary").classList.toggle("selected", view === "home" || view === "entry");
     $("navAsk").classList.toggle("selected", view === "ask" || view === "chat");
@@ -768,6 +769,7 @@
   }
   window.UnscriptedDiary = {
     pauseForLock: () => { const rec=state.recording;if(rec&&!rec.closing){rec.paused=true;if(rec.recorder?.state==="recording")flushClip(rec);updateRecorderUI();} },
+    navigateBack: route => {if(route.view==="entry"){if(state.entries.some(e=>e.id===route.id))openEntry(route.id);else switchView("home");}else if(route.view==="chat"){if(state.entries.some(e=>e.id===route.id))openChat(route.id);else switchView("ask");}else switchView(route.view);},
     config: getApiConfig, entries: () => state.entries, ready: () => !!state.db, recording: () => !!state.recording,
     audio: getAudio, clips: allClips, exportBackup, callAI, activeAI, toast:showToast, saveInterviewClip, transcribeInterviewAnswer, openInterviewSummary, summarySwitch, savePerspectiveClip, finishPerspective, discardPerspective, processEntry, profiles:profileData, restoreProfiles:restoreProfileData, saveInterview, savePerspective, perspectiveQuestion, openEntry, sources:chooseAskSources,
     freshEntries: () => transaction("entries", "readonly", s => s.getAll()),
