@@ -377,7 +377,7 @@
     return entry.id;
   }
   function profileData() {
-    const keys=["unscripted-text-style","unscripted-summary-style","unscripted-personal-profile","unscripted-reflection-profile","unscripted-know-quiz","unscripted-reflection-quiz","unscripted-interview-draft"];
+    const keys=["unscripted-text-style","unscripted-summary-style","unscripted-personal-profile","unscripted-reflection-profile","unscripted-know-quiz","unscripted-reflection-quiz","unscripted-interview-draft","unscripted-interview-question-history"];
     return Object.fromEntries(keys.map(key=>[key,localStorage.getItem(key)||""]));
   }
   function restoreProfileData(profiles) {

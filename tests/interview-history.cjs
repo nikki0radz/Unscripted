@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const store=new Map(),ctx={window:{},localStorage:{getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)}};
+vm.runInNewContext(fs.readFileSync('interview-history.js','utf8'),ctx);const H=ctx.window.UnscriptedInterviewHistory;
+H.remember('Would you tell the truth?','shown',100);
+assert(H.excluded().includes('Would you tell the truth?'),'abandoned prompts stay excluded');
+H.remember('Would you tell the truth?','answered',200);H.remember('Would you tell the truth?','skipped',300);assert(H.excluded([],{},1e12).includes('Would you tell the truth?'),'answered prompts never recycle');
+const now=Date.now();H.remember('Would you share the prize?','skipped',now);
+assert(H.excluded([],{},now+86400000).includes('Would you share the prize?'));
+assert(!H.excluded([],{},now+31*86400000).includes('Would you share the prize?'));
+assert(H.repeated('Would you tell the truth 💭?',H.excluded()),'emoji and punctuation changes do not bypass repeats');
+H.excluded([{createdAt:new Date(now).toISOString(),interview:{answers:[{question:'An older saved prompt?',answer:'Yes'}]}}],{question:'An unfinished prompt?'});
+assert(H.excluded().includes('An older saved prompt?'));assert(H.excluded().includes('An unfinished prompt?'));
+console.log('Passed: persistent seen history, archive/draft migration, answered exclusions, 30-day skip cooldown and superficial duplicate detection.');

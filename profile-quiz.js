@@ -86,7 +86,20 @@ function cleanInterviewQuestion(text) {
           sources=window.UnscriptedDiary.sources("recent plans intentions conversations "+(data.answers.at(-1)?.answer||"")).sources.filter(s=>recent.has(s.id)).slice(-10);
           profile=(localStorage.getItem("unscripted-personal-profile")||"").slice(0,6000);
         }
-        result=await window.UnscriptedDiary.callAI("/interview",{mode:data.followUp?"follow-up":"curiosity",goal:data.goal,answers:data.answers.slice(-12),continuation:data.continuation||"fresh",sources,profile,now:new Date().toISOString()});
+        const history=window.UnscriptedInterviewHistory;
+        const excluded=history?.excluded(window.UnscriptedDiary.entries(),data)||[];
+        const angles=["honesty versus loyalty","fairness versus helping someone in need","privacy versus public benefit","promises versus changed circumstances","personal responsibility versus collective responsibility","protecting nature versus livelihoods","tradition versus individual freedom","forgiveness versus accountability"];
+        for(let attempt=0;attempt<3;attempt++){
+          const seed=answerUid();const random=new Uint32Array(1);crypto.getRandomValues(random);
+          const goal=(data.goal||"Surprise me")+((data.continuation!=="follow-up"&&/moral|ethical/i.test(data.goal))?" — explore "+angles[random[0]%angles.length]+" in an original hypothetical scenario; avoid the standard trolley problem opener":"");
+          // Recent seen prompts also reach older backends as skipped context, never as beliefs.
+          const recent=excluded.slice(-Math.max(0,12-data.answers.length)).map(question=>({question,answer:"",skipped:true}));
+          result=await window.UnscriptedDiary.callAI("/interview",{mode:data.followUp?"follow-up":"curiosity",goal,answers:[...recent,...data.answers].slice(-12),excludedQuestions:excluded.slice(-200),variationSeed:seed,continuation:data.continuation||"fresh",sources,profile,now:new Date().toISOString()});
+          if(!result?.question||!history?.repeated(result.question,excluded))break;
+          result=null;
+        }
+        if(!result)throw Error("The AI kept repeating an earlier question. Tap Refresh question to try a different one.");
+        history?.remember(result.question);
       }else result = await window.UnscriptedDiary.callAI("/profile-quiz", {mode, action:"question", answers:data.answers});
       if(typeof result.question!=="string"||!result.question.trim())throw new Error("No question returned. Tap Refresh question to retry.");
       data.questionSources=mode==="interview"&&!data.followUp?[]:(result.sourceIds||[]);
@@ -168,6 +181,7 @@ function cleanInterviewQuestion(text) {
       if(editing>=0){
         data.answers[editing]={...data.answers[editing],answer:answer.slice(0,mode==="interview"?700000:6000),skipped:!answer};editing=-1;save();await buildContext();return;
       }
+      if(mode==="interview")window.UnscriptedInterviewHistory?.remember(data.question,skip?"skipped":"answered");
       data.answers.push({id:data.currentAnswerId||answerUid(),hasAudio:!!data.currentAnswerId,createdAt:new Date().toISOString(),question:data.question,answer:skip?"":answer.slice(0,mode==="interview"?700000:6000),skipped:skip,sourceIds:data.questionSources||[]});
       data.currentAnswerId=null;data.question="";save();$("quizAnswer").value="";
       if(mode==="interview"){
@@ -323,6 +337,7 @@ function cleanInterviewQuestion(text) {
     if(!goal){window.UnscriptedDiary.toast("Add a goal, or choose Surprise me.");return;}
     const draft=load("interview");
     if((draft.answers.length||draft.question)&&!await window.UnscriptedConfirm("A new interview will replace the unfinished quiz. Answers already saved as a diary entry will stay.",{title:"Start a new interview?",confirmLabel:"Start new"}))return;
+    window.UnscriptedInterviewHistory?.excluded(window.UnscriptedDiary.entries(),draft);
     $("interviewSetupModal").hidden=true;await open("interview",{fresh:true,goal:setupFollowUp?"Follow up on recent plans":goal.slice(0,200),followUp:setupFollowUp});
   };
   document.addEventListener("keydown",event=>{if(event.key==="Escape"&&!$("interviewSetupModal").hidden)$("interviewSetupModal").hidden=true;});

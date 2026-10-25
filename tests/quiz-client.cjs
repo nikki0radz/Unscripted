@@ -3,11 +3,11 @@ const elements=new Map(),store=new Map(),events={};let stopTask,profileCalls=0,o
 function el(){return{hidden:false,disabled:false,value:"",textContent:"",children:[],classList:{toggle(){}},append(...children){this.children.push(...children)},replaceChildren(...children){this.children=children}};}
 function $(id){if(!elements.has(id))elements.set(id,el());return elements.get(id);}
 class Recorder{static isTypeSupported(){return true}constructor(){this.mimeType="audio/webm";this.state="inactive"}start(){this.state="recording"}stop(){this.state="inactive";this.ondataavailable({data:new Blob(["voice"],{type:"audio/webm"})});stopTask=this.onstop();}}
-const context={console,crypto:globalThis.crypto,Blob,FormData,MediaRecorder:Recorder,setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},confirm:()=>true,
+const context={console,crypto:globalThis.crypto,Uint32Array,Blob,FormData,MediaRecorder:Recorder,setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},confirm:()=>true,
 localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},document:{getElementById:$,createElement:el,addEventListener(){}},Event,
 navigator:{mediaDevices:{getUserMedia:async()=>({getTracks:()=>[{stop(){}}]})}},
 window:{UnscriptedConfirm:async()=>true,MediaRecorder:Recorder,dispatchEvent(){},addEventListener:(name,fn)=>events[name]=fn,UnscriptedDiary:{recording:()=>false,activeAI:()=>true,toast(){},entries:()=>[{id:"past",title:"Confidence at work",createdAt:"2026-07-14"}],sources:()=>{sourceRequests++;return{sources:[{id:"past",date:"2026-07-14",text:"I wondered about my confidence at work."}]};},saveInterview:async(doc,id)=>{interviews.push(structuredClone(doc));return id||"saved-interview"},openEntry:id=>{opened=id},openInterviewSummary:id=>{opened=id},callAI:async(path,body)=>{
- if(path==="/interview"){questionRequests.push(structuredClone(body));if(body.mode==="follow-up")assert(body.sources.some(x=>x.id==="past"));else{assert.equal(body.sources.length,0);assert.equal(body.profile,"");}return{question:"Interview question "+(body.answers.length+1)+"?",sourceIds:body.mode==="follow-up"?["past"]:[]};}
+ if(path==="/interview"){questionRequests.push(structuredClone(body));if(body.mode==="follow-up")assert(body.sources.some(x=>x.id==="past"));else{assert.equal(body.sources.length,0);assert.equal(body.profile,"");}return{question:"Interview question "+questionRequests.length+"?",sourceIds:body.mode==="follow-up"?["past"]:[]};}
  if(path==="/transcribe")return{text:"A transcribed answer."};
  if(body.action==="question")return{question:"Question "+(body.answers.length+1)+" about "+body.mode+"?"};
  profileCalls++;return{profile:body.answers.map(x=>x.answer).join("; ")};
@@ -18,6 +18,7 @@ Object.assign(context.window.UnscriptedDiary,{
  transcribeInterviewAnswer:async()=>({answer:"A transcribed answer.",summary:"Saved answer",bulletPoints:[]}),
  summarySwitch:()=>el()
 });
+vm.runInNewContext(fs.readFileSync("interview-history.js","utf8"),context);
 vm.runInNewContext(fs.readFileSync("profile-quiz.js","utf8"),context);
 (async()=>{
  await $("knowQuiz").children[0].onclick();
