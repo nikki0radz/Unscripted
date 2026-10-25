@@ -250,7 +250,13 @@ function cleanInterviewQuestion(text) {
     const result=await window.UnscriptedDiary.saveInterviewClip(data.entryId,(editing>=0?data.answers[editing].id:data.currentAnswerId),{goal:mode==="interview"?data.goal:modes[mode].title,question:editing>=0?data.answers[editing].question:data.question,sourceIds:data.questionSources,typedAnswer:$("quizAnswer").value.trim()},blob,duration);
     data.entryId=result.entryId;data.currentAnswerId=result.answerId;save();
   }
-  function releaseInterviewVoice(v){clearInterval(v.indicatorTimer);clearTimeout(v.rotation);stopVoiceIndicator(v);v.stream.getTracks().forEach(t=>t.stop());if(voice===v)voice=null;$("quizVoice").textContent="🎙 Record your answer";$("quizPause").hidden=true;}
+  function setRecordLabel(recording){
+    const icon=document.createElement("span"),label=document.createElement("span");
+    icon.className="quiz-record-symbol";icon.textContent=recording?"■":"🎙";
+    label.className="quiz-record-label";label.textContent=recording?"Stop & summarise":"Record your answer";
+    $("quizVoice").replaceChildren(icon,label);
+  }
+  function releaseInterviewVoice(v){clearInterval(v.indicatorTimer);clearTimeout(v.rotation);stopVoiceIndicator(v);v.stream.getTracks().forEach(t=>t.stop());if(voice===v)voice=null;setRecordLabel(false);$("quizPause").hidden=true;}
   async function stopInterviewVoice(){
     const v=voice;if(!v)return;v.stopping=true;clearTimeout(v.rotation);
     if(v.recorder?.state==="recording")v.recorder.stop();
@@ -279,7 +285,7 @@ function cleanInterviewQuestion(text) {
     const token=epoch;busy=true;buttons();let stream;
     try{stream=await navigator.mediaDevices.getUserMedia({audio:true});if(token!==epoch){stream.getTracks().forEach(t=>t.stop());return;}
       const v={kind:"interview",stream,recorder:null,total:0,started:0,paused:false,stopping:false,saving:false};v.finished=new Promise(resolve=>v.resolve=resolve);voice=v;
-      interviewClip(v);startVoiceIndicator(v);$("quizVoice").textContent="■ Stop & summarise";tell("Recording your answer…");
+      interviewClip(v);startVoiceIndicator(v);setRecordLabel(true);tell("Recording your answer…");
     }catch(e){stream?.getTracks().forEach(t=>t.stop());voice=null;tell(e.message,true)}
     finally{busy=false;buttons();}
   }
