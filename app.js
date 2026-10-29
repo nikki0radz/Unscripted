@@ -515,10 +515,12 @@
     finally{button.disabled=false;}
   }
   function saveApiSettings() { const url = $("apiUrl").value.trim().replace(/\/+$/, ""); if (url && (!url.startsWith("https://") || !URL.canParse(url))) { notice("settingsStatus", "Use a full HTTPS backend address.", true); return false; } localStorage.setItem("unscripted-api-url", url); sessionStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); if ($("rememberCode").checked) localStorage.setItem("unscripted-access-code", $("accessCode").value.trim()); else localStorage.removeItem("unscripted-access-code"); notice("settingsStatus", activeAI() ? "Connection saved for this browser tab. New recordings will be transcribed automatically when you save them." : "Saved. Add a backend address and access code to enable AI."); return true; }
+  const retrievalTokens = text => (text.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu)||[]).map(w=>w.replace(/y$/, "i").replace(/(.)\1+/g,"$1"));
+  const retrievalHas = (text, word) => retrievalTokens(text).includes(word);
   function askExcerpt(text,words,limit,spread=false){
     if(text.length<=limit)return text;
     const gap="\n[… excerpt gap …]\n",size=Math.max(200,Math.floor((limit-gap.length*3)/4)),chunks=[];
-    for(let start=0;start<text.length;start+=size){const body=text.slice(start,start+size),lower=body.toLocaleLowerCase();chunks.push({start,body,score:words.reduce((n,w)=>n+(lower.includes(w)?1:0),0)});}
+    for(let start=0;start<text.length;start+=size){const body=text.slice(start,start+size),lower=body.toLocaleLowerCase();chunks.push({start,body,score:words.reduce((n,w)=>n+(retrievalHas(lower,w)?1:0),0)});}
     let chosen;
     if(!spread&&chunks.some(c=>c.score))chosen=chunks.slice().sort((a,b)=>b.score-a.score).slice(0,4);
     else chosen=[0,1,2,3].map(i=>chunks[Math.round(i*(chunks.length-1)/3)]);
@@ -527,15 +529,16 @@
   function chooseAskSources(question) {
     const positiveLookup=/compliment|said.{0,25}(?:nice|good|positive)|good (?:qualities|characteristics|traits)|positive.{0,25}about/i.test(question);
     const retrievalQuestion=question+(positiveLookup?" calm safe gentle kind patient supportive respectful caring listens comfort appreciate reassuring shouting":"");
-    const words = retrievalQuestion.toLowerCase().split(/\W+/).filter((x) => x.length > 3&&!new Set(["what","which","when","where","have","does","there","about","that","this","keep","coming","going","things","anything","something","diary","often","most","themes","theme","recurring"]).has(x));
+    const words = retrievalTokens(retrievalQuestion).filter((x) => x.length > 3&&!new Set(["what","which","when","where","have","does","there","about","that","this","keep","coming","going","things","anything","something","diary","often","most","themes","theme","recurring"]).has(x));
     const entries = state.entries.filter((e) => e.kind!=="diaryChat" && transcriptText(e).trim());
-    const scored = entries.map((entry) => ({ entry, score: words.reduce((t, w) => t + (transcriptText(entry).toLowerCase().includes(w) ? 2 : 0) + ((entry.title + " " + (entry.tags || []).join(" ")).toLowerCase().includes(w) ? 4 : 0), 0) }));
+    const scored = entries.map((entry) => ({ entry, score: words.reduce((t, w) => t + (retrievalHas(transcriptText(entry),w) ? 2 : 0) + (retrievalHas(entry.title + " " + (entry.tags || []).join(" "),w) ? 4 : 0), 0) }));
     // Include both recent and older entries so historical comparisons have chronological coverage.
-    scored.sort((a, b) => b.score - a.score);
+    scored.sort((a, b) => b.score - a.score || b.entry.updatedAt.localeCompare(a.entry.updatedAt));
     const recurring=/recurr|keep (?:coming|going|talking|mentioning|returning)|coming back to|again and again|repeated|constantly|\bthemes?\b|\bpatterns?\b/i.test(question);
     const selected = recurring?(entries.length<=40?entries.slice():Array.from({length:40},(_,i)=>entries[Math.round(i*(entries.length-1)/39)])):scored.slice(0, 32).map((v) => v.entry);
     const old = entries.slice(-8); for (const e of old) if (!selected.includes(e)) selected.push(e);
-    selected.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    // Spend the context budget on the strongest matches before adding historical coverage.
+    if(recurring)selected.sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
     let used = 0, truncated = false;
     const sources = [];
     for (const entry of selected) {
@@ -543,7 +546,7 @@
       const full = searchableParts(entry).filter(x=>!x.part.skipped).map(x=>`[${x.part.createdAt}] `+x.text).join("\n");
       const remaining = 125000 - used - prefix.length;
       if (remaining <= 100) { truncated = true; break; }
-      const cap=Math.min(remaining,recurring?Math.max(500,Math.floor(118000/Math.max(1,selected.length))):11000);
+      const cap=Math.min(remaining,recurring?Math.max(500,Math.floor(118000/Math.max(1,selected.length))):16000);
       const body = askExcerpt(full,words,cap,recurring);
       if (body.length < full.length) truncated = true;
       sources.push({ id: entry.id, date: entry.createdAt, title: entry.title, text: body }); used += prefix.length + body.length;
@@ -611,8 +614,8 @@
   const suggestionIdeas=["Is there one theme I return to across different days?","What have I felt genuinely excited about lately?","Is there something I said I’d do but haven’t followed up on?","Have my feelings about anything changed?","What seems to drain my energy?","When have I sounded most like myself?","What small wins have I mentioned?","What am I still undecided about?","Have I described the same problem in different situations?"];
   function renderAskSuggestions(){const target=$("askSuggestions");if(!target)return;target.replaceChildren();for(let i=0;i<3;i++){const text=suggestionIdeas[(suggestionRound*3+i)%suggestionIdeas.length],button=make("button","suggestion");const icon=make("span","suggestion-icon","✦"),label=make("span","",text);icon.setAttribute("aria-hidden","true");button.type="button";button.append(icon,label);button.onclick=()=>{$("askInput").value=text;$("askInput").focus();};target.append(button);}suggestionRound++;}
   function renderChatArchive(){const target=$("chatArchive");if(!target)return;target.replaceChildren();const chats=state.entries.filter(e=>e.kind==="diaryChat");if(!chats.length)return;target.append(make("h3","","Your chats"));for(const chat of chats){const b=make("button","entry-card chat-archive-row",chat.title+" · "+relativeDate(chat.createdAt));b.type="button";b.onclick=()=>openChat(chat.id);target.append(b);}}
-  function renderChat(){const chat=state.entries.find(e=>e.id===activeChatId);if(!chat)return;$("chatTitle").textContent=chat.title;const target=$("chatMessages");target.replaceChildren();for(const m of chat.messages||[]){const bubble=make("div","chat-bubble "+m.role);bubble.append(make("span","chat-speaker",m.role==="user"?"You":"Your diary"),make("div","chat-text",cleanAnswer(m.content,state.entries)));target.append(bubble);}$("chatContextNote").textContent=chat.truncated?"Based on selected diary excerpts; some history falls outside the context available for this reply.":"Based on the diary excerpts available when each reply was written.";}
-  async function sendChat(question,retry=false){if(chatBusy)return;const chat=state.entries.find(e=>e.id===activeChatId);if(!chat)return;chatBusy=true;$("chatSend").disabled=true;$("deleteChat").disabled=true;try{if(!retry){chat.messages.push({role:"user",content:question});await saveEntry(chat);}renderChat();notice("chatStatus","Thinking…");const history=chat.messages.slice(-16,-1).map(m=>({role:m.role,content:m.content}));const {sources,truncated}=chooseAskSources(chat.messages.filter(m=>m.role==="user").slice(-3).map(m=>m.content).join(" "));if(!sources.length)throw Error("Transcribe a recording first so your diary has something to draw on.");const result=await callAI("/ask",{question,sources,truncated,history,now:new Date().toISOString(),personalProfile:localStorage.getItem("unscripted-personal-profile")||"",style:summaryStyle(null)});chat.messages.push({role:"assistant",content:cleanAnswer(result.answer,sources),sourceIds:(result.sourceIds||[]).filter(id=>sources.some(s=>s.id===id)),createdAt:new Date().toISOString()});chat.truncated=truncated;await saveEntry(chat);await refreshEntries();renderChat();notice("chatStatus","");}catch(e){notice("chatStatus","Could not reply: "+e.message,true);const b=make("button","button-soft","Retry reply");b.type="button";b.onclick=()=>sendChat(question,true);$("chatStatus").append(b);}finally{chatBusy=false;$("chatSend").disabled=false;$("deleteChat").disabled=false;}}
+  function renderChat(){const chat=state.entries.find(e=>e.id===activeChatId);if(!chat)return;$("chatTitle").textContent=chat.title;const target=$("chatMessages");target.replaceChildren();for(const m of chat.messages||[]){const bubble=make("div","chat-bubble "+m.role);bubble.append(make("span","chat-speaker",m.role==="user"?"You":"Your diary"),make("div","chat-text",cleanAnswer(m.content,state.entries)));if(m.role==="assistant")for(const id of m.sourceIds||[]){const source=state.entries.find(e=>e.id===id);if(!source)continue;const link=make("button","source-link",fmtDate(source.createdAt)+" · "+source.title);link.type="button";link.onclick=()=>openEntry(id);bubble.append(link);}target.append(bubble);}$("chatContextNote").textContent=chat.truncated?"Based on selected diary excerpts; some history falls outside the context available for this reply.":"Based on the diary excerpts available when each reply was written.";}
+  async function sendChat(question,retry=false){if(chatBusy)return;const chat=state.entries.find(e=>e.id===activeChatId);if(!chat)return;chatBusy=true;$("chatSend").disabled=true;$("deleteChat").disabled=true;try{if(!retry){chat.messages.push({role:"user",content:question});await saveEntry(chat);}await refreshEntries();renderChat();notice("chatStatus","Thinking…");const history=chat.messages.slice(-16,-1).map(m=>({role:m.role,content:m.content}));const {sources,truncated}=chooseAskSources(chat.messages.filter(m=>m.role==="user").slice(-6).map(m=>m.content).join(" "));if(!sources.length)throw Error("Transcribe a recording first so your diary has something to draw on.");const result=await callAI("/ask",{question,sources,truncated,history,now:new Date().toISOString(),personalProfile:localStorage.getItem("unscripted-personal-profile")||"",style:summaryStyle(null)});chat.messages.push({role:"assistant",content:cleanAnswer(result.answer,sources),sourceIds:(result.sourceIds||[]).filter(id=>sources.some(s=>s.id===id)),createdAt:new Date().toISOString()});chat.truncated=truncated;await saveEntry(chat);await refreshEntries();renderChat();notice("chatStatus","");}catch(e){notice("chatStatus","Could not reply: "+e.message,true);const b=make("button","button-soft","Retry reply");b.type="button";b.onclick=()=>sendChat(question,true);$("chatStatus").append(b);}finally{chatBusy=false;$("chatSend").disabled=false;$("deleteChat").disabled=false;}}
   function bindEnhancements(){
     $("searchButton").onclick=()=>{semanticResults=null;searchRevision++;renderHome();if($("searchInput").value.trim().split(/\s+/).length>=4&&activeAI())searchByMeaning();};$("searchInput").onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();$("searchButton").click();}};$("semanticSearch").onclick=searchByMeaning;
     $("followUpButton").onclick=()=>window.UnscriptedQuiz?.startFollowUp();
@@ -730,9 +733,10 @@
   async function exportBackup() {
     const button = $("exportBackup"); button.disabled = true; button.textContent = "Preparing backup...";
     try {
+      await refreshEntries();
       const audios = [];
       for (const entry of state.entries) for (const clip of allClips(entry)) {
-        const blob = await getAudio(clip.id); if (blob) audios.push({ id: clip.id, content: await blobToDataURL(blob) });
+        const blob = await getAudio(clip.id); if (!blob) throw Error("An audio clip is missing. Keep this diary installed and recover the clip from a previous backup before transferring."); if (blob) audios.push({ id: clip.id, content: await blobToDataURL(blob) });
       }
       const data = { app: "unscripted", version: 1, profiles: profileData(), profile: localStorage.getItem("unscripted-reflection-profile") || "", exportedAt: new Date().toISOString(), entries: state.entries, audios };
       const file = new Blob([JSON.stringify(data)], { type: "application/json" });
@@ -749,8 +753,13 @@
     try {
       const data = JSON.parse(await file.text());
       if (data.app !== "unscripted" || data.version !== 1 || !Array.isArray(data.entries) || !Array.isArray(data.audios)) throw new Error("Not an Unscripted v1 backup.");
-      for (const row of data.audios) if (typeof row.id === "string" && typeof row.content === "string") await saveAudio(row.id, dataURLtoBlob(row.content));
-      for (const entry of data.entries) if (typeof entry.id === "string" && Array.isArray(entry.parts)) await saveEntry(entry);
+      if(state.recording||state.processing.size)throw Error("Finish recording and processing before importing.");
+      if(data.entries.some(e=>!e||typeof e.id!=="string"||!Array.isArray(e.parts)))throw Error("Invalid entry in backup.");
+      const audios=data.audios.map(row=>{if(!row||typeof row.id!=="string"||typeof row.content!=="string")throw Error("Invalid audio in backup.");return {id:row.id,blob:dataURLtoBlob(row.content)};});
+      const audioIds=new Set(audios.map(row=>row.id));
+      if(data.entries.some(entry=>allClips(entry).some(clip=>!audioIds.has(clip.id))))throw Error("Backup is incomplete: some recordings are missing. Nothing was imported.");
+      await window.UnscriptedDiary.restore(data.entries,audios);
+      window.dispatchEvent(new Event("unscripted-change"));
       if (typeof data.profile === "string") localStorage.setItem("unscripted-reflection-profile", data.profile.slice(0,4000)); restoreProfileData(data.profiles);
       window.UnscriptedTextStyle?.apply();await refreshEntries(); switchView("home"); showToast("Backup imported ✦");
     } catch (error) { showToast("Import failed: " + error.message); }
@@ -816,3 +825,4 @@
   };
   init();
 })();
+

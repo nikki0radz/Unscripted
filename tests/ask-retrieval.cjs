@@ -1,0 +1,30 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),vm=require('node:vm');
+const app=fs.readFileSync('app.js','utf8');
+const extract=(start,end)=>app.slice(app.indexOf(start),app.indexOf(end,app.indexOf(start)));
+const context={state:{entries:[]},transcriptText:e=>e.text,searchableParts:e=>[{part:{createdAt:e.createdAt},text:e.text}]};
+vm.createContext(context);
+vm.runInContext(extract('  const retrievalTokens','  async function askDiary')+';globalThis.choose=chooseAskSources;',context);
+const entry=(id,text,date)=>({id,text,title:'Thoughts',tags:[],createdAt:date,updatedAt:date});
+const target=entry('target','Unrelated thoughts. '.repeat(3000)+'Pippi never followed through with the task. I felt let down.','2026-10-29T12:00:00Z');
+context.state.entries=[target,...Array.from({length:40},(_,i)=>entry('old'+i,'Unrelated history. '.repeat(1500),'2025-01-01T00:00:00Z'))];
+let result=context.choose('How do I feel about Pippy?');
+assert.equal(result.sources[0].id,'target');
+assert.match(result.sources[0].text,/Pippi never followed/);
+assert.ok(result.sources.reduce((n,s)=>n+s.text.length,0)<=125000);
+assert.equal(result.truncated,true);
+context.state.entries=[entry('chat','Pippi is wonderful.','2026-10-29')];context.state.entries[0].kind='diaryChat';
+assert.equal(context.choose('Pippy').sources.length,0);
+const worker=fs.readFileSync('api/worker.js','utf8');
+const ask=worker.slice(worker.indexOf('async function ask('),worker.indexOf('\nconst REFLECT_INSTRUCTIONS'));
+const run=async(draft)=>{
+ const ctx={replyPlan:()=>({kind:'specific'}),recurringEvidence:async()=>null,standoutEvidence:(plan,patterns,sources)=>({sources,patterns}),openAIText:async()=>JSON.stringify(draft),parseJSON:JSON.parse,FOCUSED_ASK_RULES:'',ASK_INSTRUCTIONS:'',styleInstructions:()=>'',responseRules:()=>'',enforceReplyContract:async x=>x};vm.createContext(ctx);vm.runInContext(ask+';globalThis.ask=ask;',ctx);
+ return ctx.ask({question:'How do I feel?',sources:[{id:'target',text:'I felt let down when Pippi forgot.'}]},{});
+};
+(async()=>{
+ let r=await run({answer:'You said she forgot in your recording.',sourceIds:['target'],evidence:[{id:'target',quote:'Made up from the conversation'}]});
+ assert.equal(r.sourceIds.length,0);assert.match(r.answer,/couldn’t locate/);
+ r=await run({answer:'You felt let down.',sourceIds:['target','invented'],evidence:[{id:'target',quote:'I felt let down when Pippi forgot.'}]});
+ assert.equal(r.answer,'You felt let down.');assert.equal(r.sourceIds.join(','),'target');
+ console.log('Retrieval and evidence regression checks passed.');
+})().catch(e=>{console.error(e);process.exit(1)});
