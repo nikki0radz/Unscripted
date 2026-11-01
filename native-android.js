@@ -14,6 +14,7 @@
     const D=window.UnscriptedDiary;if(syncing||!D?.ready())return;syncing=true;
     try{let s=status();if(s.active&&s.metadata?.simple&&!simple){command('stop');s=status();}lastStatus=s;for(const c of [...(s.clips||[])].sort((a,b)=>(a.createdAt||"").localeCompare(b.createdAt||""))){if(c.simple&&(simple?.token===c.token||ownedTokens.has(c.token)))continue;await D.nativeImport(c,await blob(c));bridge.ack(c.id);}D.nativeStatus(s);if(simple&&simple.state==='recording'&&!s.active&&(s.clips||[]).some(c=>c.token===simple.token)){simple.state='inactive';simple.finish().catch(e=>simple?.onerror?.({error:e}));}for(const [id,p] of pending){const raw=bridge.result(id);if(!raw)continue;const result=JSON.parse(raw);pending.delete(id);if(!id.startsWith('transcribe-'))bridge.forget(id);if(result.error)p.reject(Error(result.error));else p.resolve(result);}}
     catch(e){D.toast(e.message);}finally{syncing=false;}
+    const entryId=bridge.notificationEntry?.();if(entryId&&!D.recording?.()&&D.entries?.().some(e=>e.id===entryId)){D.openEntry(entryId);bridge.clearNotificationEntry?.();}
   }
   async function callAI(path,body,asForm,code){
     if(!notificationRequested){notificationRequested=true;bridge.requestNotifications?.();}
@@ -35,11 +36,12 @@
     start:async(entryId,partId)=>{await permissions();const token=crypto.randomUUID();command('start',{entryId,partId,token});await waitStart(token);},
     finish:async(cancel=false)=>{command(cancel?'cancel':'stop');while(syncing)await sleep(20);await sync();if(!cancel&&(status().clips||[]).some(c=>!c.simple))throw Error('Audio is still waiting to be saved. Keep Unscripted open and try Save again.');},
     ackTranscript:id=>bridge.forget('transcribe-'+id),
+    transcriptionFinished:(entryId,revision)=>bridge.transcriptionFinished?.(entryId,revision),
     exportBackup:(text,name)=>bridge.exportBackup(text,name),
     meter:()=>lastStatus.level||0
   };
   window.addEventListener('unscripted-native',()=>{sync();});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync();});
   setInterval(sync,750);
-  document.addEventListener('DOMContentLoaded',()=>{fetch('/session/status',{credentials:'same-origin',cache:'no-store'}).catch(()=>{});const hint=document.getElementById('recordingBackgroundHint');if(hint)hint.textContent='Recording continues when you leave the app or lock your screen. Return using the Unscripted notification.';const install=document.getElementById('installAppButton');if(install){install.disabled=true;install.textContent='Android app · 1.0.7';}document.querySelectorAll('#installAppStatus').forEach(x=>x.textContent='Background recording and transcription are available in this app.');});
+  document.addEventListener('DOMContentLoaded',()=>{fetch('/session/status',{credentials:'same-origin',cache:'no-store'}).catch(()=>{});const hint=document.getElementById('recordingBackgroundHint');if(hint)hint.textContent='Recording continues when you leave the app or lock your screen. Return using the Unscripted notification.';const install=document.getElementById('installAppButton');if(install){install.disabled=true;install.textContent='Android app · 1.0.8';}document.querySelectorAll('#installAppStatus').forEach(x=>x.textContent='Background recording and transcription are available in this app.');});
 })();

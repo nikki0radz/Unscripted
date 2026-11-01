@@ -87,6 +87,7 @@ public class MainActivity extends Activity {
  }
  static String origin(Uri u){return u.getScheme()+"://"+u.getAuthority();}
  static void signal(){MainActivity a=active;if(a!=null)a.main.post(()->a.web.evaluateJavascript("window.dispatchEvent(new Event('unscripted-native'));",null));}
+ @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);signal();}
  @Override public void onRequestPermissionsResult(int req,String[] names,int[] grants){super.onRequestPermissionsResult(req,names,grants);if(req==12&&micRequest!=null){if(grants.length>0&&grants[0]==PackageManager.PERMISSION_GRANTED)micRequest.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});else micRequest.deny();micRequest=null;}signal();}
  @Override protected void onActivityResult(int req,int result,Intent data){super.onActivityResult(req,result,data);if(req==10&&chooser!=null){chooser.onReceiveValue(result==RESULT_OK&&data!=null?new Uri[]{data.getData()}:null);chooser=null;}if(req==11&&result==RESULT_OK&&data!=null&&exportData!=null){final String value=exportData;final Uri uri=data.getData();new Thread(()->{try(OutputStream out=getContentResolver().openOutputStream(uri)){out.write(value.getBytes("UTF-8"));}catch(Exception e){main.post(()->android.widget.Toast.makeText(this,"Could not save backup",1).show());}}).start();}exportData=null;}
  @Override protected void onResume(){super.onResume();active=this;if(web!=null)signal();if(updates!=null)updates.check(false);}
@@ -94,6 +95,9 @@ public class MainActivity extends Activity {
  @Override public void onBackPressed(){web.evaluateJavascript("window.UnscriptedDiary?.recording()?window.UnscriptedDiary.toast('Save or pause your recording before leaving.'):history.back()",null);}
  class Bridge {
   @JavascriptInterface public boolean available(){return true;}
+  @JavascriptInterface public void transcriptionFinished(String entryId,String revision){main.post(()->AppNotifications.transcriptionFinished(MainActivity.this,entryId,revision));}
+  @JavascriptInterface public String notificationEntry(){return Objects.toString(getIntent().getStringExtra("notificationEntry"),"");}
+  @JavascriptInterface public void clearNotificationEntry(){getIntent().removeExtra("notificationEntry");}
   @JavascriptInterface public String updateStatus(){return updates==null?"{}":updates.status().toString();}
   @JavascriptInterface public void checkAppUpdates(){if(updates!=null)updates.check(true);}
   @JavascriptInterface public void setAutomaticUpdates(boolean enabled){if(updates!=null)updates.automatic(enabled);}

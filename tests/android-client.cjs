@@ -2,17 +2,21 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const source=fs.readFileSync('native-android.js','utf8');
 const tick=()=>new Promise(r=>setImmediate(r));
 function setup(){
- const events={},results=new Map(),requests=[],acks=[],imports=[],timers=[];
+ const events={},results=new Map(),requests=[],acks=[],imports=[],timers=[],notices=[],opened=[];let notificationEntry='',recording=false;
  let data={active:false,clips:[]},allowImport=true,permissionCalls=0;
  const bridge={available:()=>true,microphoneGranted:()=>true,permissions(){permissionCalls++;},command(action,raw){const m=JSON.parse(raw);if(action==='start'){data={...data,active:true,metadata:m,error:''};}if(action==='stop'){data.active=false;}if(action==='cancel'){data.active=false;data.clips=[];}return JSON.stringify(data);},ack(id){acks.push(id);data.clips=data.clips.filter(c=>c.id!==id);},result:id=>results.get(id)||'',forget:id=>results.delete(id),http(id,path,json,file,code){requests.push({id,path,json,file,code});return '';},exportBackup(){}};
  class Reader{readAsDataURL(blob){blob.arrayBuffer().then(v=>{this.result='data:'+blob.type+';base64,'+Buffer.from(v).toString('base64');this.onload();});}}
- const window={UnscriptedAndroid:bridge,Blob,addEventListener:(name,fn)=>events[name]=fn,UnscriptedDiary:{ready:()=>true,async nativeImport(c,b){if(!allowImport)throw Error('disk full');imports.push([c,b]);},nativeStatus(){},toast(){}}};
+ bridge.transcriptionFinished=(id,revision)=>notices.push({id,revision});bridge.notificationEntry=()=>notificationEntry;bridge.clearNotificationEntry=()=>notificationEntry='';
+ const window={UnscriptedAndroid:bridge,Blob,addEventListener:(name,fn)=>events[name]=fn,UnscriptedDiary:{ready:()=>true,entries:()=>[{id:'entry'}],recording:()=>recording,openEntry:id=>opened.push(id),async nativeImport(c,b){if(!allowImport)throw Error('disk full');imports.push([c,b]);},nativeStatus(){},toast(){}}};
  const context={window,navigator:{mediaDevices:{}},crypto:globalThis.crypto,Blob,FileReader:Reader,fetch:async()=>({ok:true,blob:async()=>new Blob(['aac'],{type:'audio/mp4'})}),setInterval:fn=>timers.push(fn),setTimeout,Event,console,document:{addEventListener(){}}};
  vm.runInNewContext(source,context);
- return{window,bridge,results,requests,acks,imports,timers,events,context,permissionCalls:()=>permissionCalls,setData:v=>data=v,setImport:v=>allowImport=v};
+ return{window,bridge,results,requests,acks,imports,timers,events,context,notices,opened,setNotification:v=>notificationEntry=v,setRecording:v=>recording=v,permissionCalls:()=>permissionCalls,setData:v=>data=v,setImport:v=>allowImport=v};
 }
 (async()=>{
  const T=setup(),N=T.window.UnscriptedNative;
+ N.transcriptionFinished('entry','a,b');assert.deepEqual(T.notices,[{id:'entry',revision:'a,b'}]);
+ T.setNotification('entry');T.setRecording(true);await N.sync();assert.equal(T.opened.length,0,'notification must not navigate away from recording');
+ T.setRecording(false);await N.sync();await N.sync();assert.deepEqual(T.opened,['entry'],'notification opens associated entry once');
  await N.start('entry','part');assert.equal(N.status().active,true);assert.equal(T.permissionCalls(),1,'notification permission must be checked even with existing microphone access');
  // Independent clips are replayed in chronological order, even when disk UUID order differs.
  T.setData({active:false,clips:[{id:'b',entryId:'entry',partId:'part',createdAt:'2026-10-31T12:02:00Z'},{id:'a',entryId:'entry',partId:'part',createdAt:'2026-10-31T12:00:00Z'}]});

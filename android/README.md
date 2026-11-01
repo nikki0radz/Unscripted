@@ -1,4 +1,4 @@
-# Unscripted for Android 1.0.7
+# Unscripted for Android 1.0.8
 
 Package: `com.nikki.unscripted`. Android 8 (API 26) or newer; target API 35.
 The shell bundles the diary frontend and connects to the existing private Unscripted backend. Sign in with the existing diary access code. The current WebView does not guarantee passkey support; access-code login remains available.
@@ -70,3 +70,9 @@ Native update checks run on opening/returning to the app, at most once every six
 The update feed is https://nikki0radz.github.io/Unscripted/app-update.json. It must be published alongside the matching signed downloads/Unscripted-VERSION.apk. Run python3 android/write-release.py /absolute/path/Unscripted-VERSION.apk after signing, and publish both files with the release source. Missing/offline feeds display a truthful error in settings rather than claiming the app is current. Source preparation alone does not activate update hosting. Future releases must update versionCode/versionName, use the same keystore, and regenerate the feed after signing.
 
 Tests cover release validation, hostile URLs, version comparisons, check throttling/opt-out/manual checks, download consent, update UI, startup, backup import and recording. Phone launcher masking, notification behaviour and the actual Android upgrade still require on-device verification.
+
+## 1.0.8 notification icon and transcription completion
+
+Ongoing recording/processing and completion notifications use a monochrome handwritten U. A separate Transcription finished channel posts once after all pending audio clips have been transcribed and saved, before summary generation. No completion alert is posted for partial/failed transcription or summary-only refreshes. Completion notifications contain no diary text; tapping opens the associated entry when the diary is loaded and no recording is active. Native notification revisions prevent duplicate alerts for the same set of clips. Existing Android notification permissions and channel settings apply.
+
+Device notification display, sound and tapping from a locked screen require phone verification. Processing still follows the existing native HTTP/WebView pipeline; notifications do not make work continue after force-stop.

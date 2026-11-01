@@ -24,24 +24,22 @@ jobs:
           import hashlib,json,pathlib,os
           feed=json.loads(pathlib.Path('app-update.json').read_text())
           version=feed['versionName']
-          assert version == '1.0.7', 'Review this release workflow before publishing a new version'
+          assert version == '1.0.8', 'Review this release workflow before publishing a new version'
           apk=pathlib.Path('downloads')/f'Unscripted-{version}.apk'
           data=apk.read_bytes()
           assert len(data)==feed['sizeBytes'], 'APK size mismatch'
           assert hashlib.sha256(data).hexdigest()==feed['sha256'], 'APK checksum mismatch'
-          pathlib.Path('release-notes.md').write_text('''Unscripted 1.0.7
+          pathlib.Path('release-notes.md').write_text('''Unscripted 1.0.8
 
-          - Confirm before finishing a recording, with equal Save and Keep recording buttons.
-          - Aligned Write a thought icon.
-          - Settings organized into six collapsible categories.
-          - Handwritten U logo and circular adaptive Android icon.
-          - Automatic update checks on opening and Check now under App & recording.
+          - Handwritten U icon in recording, processing and completion notifications.
+          - Notification when the full transcript has been saved; tap to open the entry.
+          - No repeated alerts for individual clips or summary-only refreshes.
 
           Install this APK over the existing Unscripted app to update.
           ''')
           PY
-          if gh release view v1.0.7 >/dev/null 2>&1; then
-            echo 'Release v1.0.7 already exists; leaving it unchanged.'
+          if gh release view v1.0.8 >/dev/null 2>&1; then
+            echo 'Release v1.0.8 already exists; leaving it unchanged.'
           else
-            gh release create v1.0.7 downloads/Unscripted-1.0.7.apk app-update.json --target "$GITHUB_SHA" --title "Unscripted 1.0.7" --notes-file release-notes.md --latest
+            gh release create v1.0.8 downloads/Unscripted-1.0.8.apk app-update.json --target "$GITHUB_SHA" --title "Unscripted 1.0.8" --notes-file release-notes.md --latest
           fi

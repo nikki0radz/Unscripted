@@ -22,6 +22,7 @@ jobs:
       - run: node tests/app-updates.cjs
       - run: python3 tests/android-startup.py
       - run: node tests/android-client.cjs
+      - run: node tests/transcription-notifications.cjs
       - run: node tests/backup-import.cjs
       - uses: android-actions/setup-android@v3
         with:

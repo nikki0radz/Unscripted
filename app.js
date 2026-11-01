@@ -458,6 +458,7 @@
     try {
       let entry = state.entries.find((e) => e.id === id); if (!entry) return;
       entry.aiError = "";
+      let transcribedThisRun = false;
       const persist = async (change) => {
         const fresh = await transaction("entries", "readonly", store => store.get(id));
         if (!fresh) throw new Error("This entry no longer exists.");
@@ -489,7 +490,15 @@
             fresh.aiError = "";
           }); // persist each completed clip without overwriting concurrent edits
           window.UnscriptedNative?.ackTranscript(clip.id);
+          transcribedThisRun = true;
           if (state.view === "entry" && state.selected === id) renderEntry();
+        }
+      }
+      // Notify only after every clip is saved, before summary generation (which can fail independently).
+      if (transcribedThisRun && window.UnscriptedNative) {
+        const saved = await transaction("entries", "readonly", store => store.get(id));
+        if (saved && !allClips(saved).some(c => !c.transcript && !c.transcriptionComplete)) {
+          window.UnscriptedNative.transcriptionFinished?.(id, allClips(saved).map(c => c.id).sort().join(","));
         }
       }
       if (state.pauseTranscription.has(id)) return;
