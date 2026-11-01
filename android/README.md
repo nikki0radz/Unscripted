@@ -27,6 +27,11 @@ Only the exact dedicated backend origin is allowed inside the WebView. Frontend 
 
 ## Build and release
 
+**Current workflow:** use [Test APK → publish tested APK](RELEASE-WORKFLOW.md).
+GitHub now checks, builds and signs on an explicit test request; publishing promotes
+the exact tested APK. The commands below remain a manual fallback, not the normal
+per-change process. The older per-version sections document historical releases.
+
 Use an official Android SDK with API 35/build-tools 35 and JDK 17:
 
 ```

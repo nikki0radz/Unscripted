@@ -1,47 +1,105 @@
-name: Publish signed Android release
+name: Test APK or publish tested APK
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/release.yml', 'app-update.json']
   workflow_dispatch:
+    inputs:
+      action:
+        description: Build a test APK, or publish the exact APK already tested
+        type: choice
+        options: [test, publish]
+        default: test
+      candidate:
+        description: For publish only, the tested release tag (for example v1.0.19)
+        type: string
+      notes:
+        description: What to try in this test update
+        type: string
+        default: Unscripted test update.
 permissions:
-  contents: write
+  contents: read
 concurrency:
-  group: publish-android-release
+  group: unscripted-android-release
   cancel-in-progress: false
 jobs:
-  release:
+  checks:
+    if: inputs.action == 'test' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/android.yml
+  test-apk:
+    needs: checks
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Verify signed APK and publish release
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Check signing setup
         env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE" && test -n "$PASSWORD" || { echo 'Set the two Android signing secrets described in android/RELEASE-WORKFLOW.md.'; exit 1; }
+      - name: Allocate version automatically
+        id: version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: python3 android/release-tools.py prepare "$RUN_NUMBER"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Build once
+        run: python3 android/build.py --sdk-tools "$ANDROID_HOME/build-tools/35.0.0" --android-jar "$ANDROID_HOME/platforms/android-35/android.jar" --out "$RUNNER_TEMP/apk"
+      - name: Sign and verify the candidate
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          VERSION: ${{ steps.version.outputs.version }}
+          NOTES: ${{ inputs.notes }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import hashlib,json,pathlib,os
-          feed=json.loads(pathlib.Path('app-update.json').read_text())
-          version=feed['versionName']
-          assert version == '1.0.12', 'Review this release workflow before publishing a new version'
-          apk=pathlib.Path('downloads')/f'Unscripted-{version}.apk'
-          data=apk.read_bytes()
-          assert len(data)==feed['sizeBytes'], 'APK size mismatch'
-          assert hashlib.sha256(data).hexdigest()==feed['sha256'], 'APK checksum mismatch'
-          pathlib.Path('release-notes.md').write_text('''Unscripted 1.0.12
-
-          - Summaries and perspective questions first, then topics, then recordings and transcripts.
-          - Named audio recordings with dates and individual expandable transcripts.
-          - Neater headings and dropdowns; Summary style and Delete entry share one row.
-          - Library filters for diary entries, interviews and individual question types.
-          - Search hits show saved audio clip ranges and can jump to the matching clip without new AI calls.
-
-          Install this APK over the existing Unscripted app to update.
-          ''')
-          PY
-          if gh release view v1.0.12 >/dev/null 2>&1; then
-            echo 'Release v1.0.12 already exists; leaving it unchanged.'
-          else
-            gh release create v1.0.12 downloads/Unscripted-1.0.12.apk app-update.json --target "$GITHUB_SHA" --title "Unscripted 1.0.12" --notes-file release-notes.md --latest
-          fi
+          umask 077
+          trap 'rm -f "$RUNNER_TEMP/signing.jks"' EXIT
+          printf '%s' "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/signing.jks"
+          APK="$RUNNER_TEMP/apk/Unscripted-$VERSION.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks "$RUNNER_TEMP/signing.jks" --ks-key-alias unscripted --ks-pass env:PASSWORD --key-pass env:PASSWORD --out "$APK" "$RUNNER_TEMP/apk/Unscripted-$VERSION-unsigned.apk"
+          python3 android/write-release.py "$APK" --output "$RUNNER_TEMP/apk/candidate-update.json" --notes "$NOTES"
+          python3 android/release-tools.py verify "$APK" "$RUNNER_TEMP/apk/candidate-update.json" "$ANDROID_HOME/build-tools/35.0.0"
+      - name: Share test download without changing stable updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          set -euo pipefail
+          printf 'Test APK — install over the existing app; do not uninstall.\n\n%s\n\nThis candidate is excluded from the stable update feed.\n' "$NOTES" > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" "$RUNNER_TEMP/apk/Unscripted-$VERSION.apk" "$RUNNER_TEMP/apk/candidate-update.json" --target "$GITHUB_SHA" --title "Unscripted $VERSION — test APK" --prerelease --latest=false --notes-file "$RUNNER_TEMP/notes.md"
+          printf '[Download test APK](https://github.com/%s/releases/download/v%s/Unscripted-%s.apk)\n' "$GITHUB_REPOSITORY" "$VERSION" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+  publish:
+    if: inputs.action == 'publish' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - run: sdkmanager 'build-tools;35.0.0'
+      - name: Verify and publish the exact tested bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE: ${{ inputs.candidate }}
+        run: python3 android/release-tools.py promote "$CANDIDATE" "$ANDROID_HOME/build-tools/35.0.0"

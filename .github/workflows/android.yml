@@ -1,8 +1,10 @@
-name: Build Android app
+name: Android checks
 on:
   push:
     branches: [main]
-    paths: ['*.js', '*.css', 'index.html', 'android/**', '.github/workflows/android.yml']
+    paths: ['*.js', '*.css', 'index.html', 'android/**', 'tests/**', '.github/workflows/**']
+  pull_request:
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,15 +31,4 @@ jobs:
       - run: node tests/summary-corrections.cjs
       - run: node tests/recording-player.cjs
       - run: node tests/backup-import.cjs
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
-          log-accepted-android-sdk-licenses: false
-      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-      - run: python3 android/build.py --sdk-tools "$ANDROID_HOME/build-tools/35.0.0" --android-jar "$ANDROID_HOME/platforms/android-35/android.jar" --out /tmp/unscripted
-      - uses: actions/upload-artifact@v4
-        with:
-          name: unscripted-unsigned-apk
-          path: /tmp/unscripted/Unscripted-*-unsigned.apk
-          retention-days: 14
-          if-no-files-found: error
+      - run: python3 tests/release-pipeline.py
