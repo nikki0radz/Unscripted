@@ -329,3 +329,19 @@ html,body{font-family:var(--reading-font);font-size:var(--reading-size)}button,i
 @keyframes library-sheet-in{from{transform:translateY(24px);opacity:.6}to{transform:translateY(0);opacity:1}}
 @media(prefers-reduced-motion:reduce){.library-type-sheet{animation:none}}
 .library-type-backdrop[hidden],#libraryKind[hidden]{display:none!important}
+
+/* Compact-pair correction footer: one quiet scale and clearly grouped actions. */
+.summary-correction{margin-top:12px;padding-top:0;border-top:1px solid var(--line)}
+.summary-correction>summary{display:flex;align-items:center;gap:8px;justify-content:flex-start;list-style:none;min-height:44px;padding:8px 0;color:var(--accent);font-size:calc(13px * var(--text-scale,1));line-height:1.5}
+.summary-correction>summary::-webkit-details-marker{display:none}
+.summary-correction>summary::after{content:'↗';position:static;float:none;margin-left:auto;border:0;transform:none;font-size:1em}
+.summary-correction[open]>summary::after{content:'−'}
+.correction-editor{border-left:2px solid var(--accent);padding:9px 0 0 12px;margin-top:4px}
+.summary-correction label{margin:0 0 7px;font-size:calc(13px * var(--text-scale,1));line-height:1.5;color:var(--muted)}
+.summary-correction textarea{font:inherit;font-size:calc(13px * var(--text-scale,1));line-height:1.5;min-height:72px;padding:9px 10px;border-radius:10px;margin:0}
+.summary-correction textarea::placeholder{font:inherit;color:var(--muted);opacity:1}
+.correction-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:4px}
+.correction-actions>button{position:relative;isolation:isolate;min-height:44px;margin:0;padding:4px 10px!important;font:inherit;font-size:calc(12px * var(--text-scale,1))!important;line-height:1.4;background:transparent!important;border:0;border-radius:0;color:var(--muted)}
+.correction-actions>button::before{content:'';position:absolute;inset:7px 0;z-index:-1;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+.correction-actions>.button-soft{color:var(--accent)}
+.correction-actions>.button-soft::before{background:color-mix(in srgb,var(--accent) 10%,var(--panel));border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}

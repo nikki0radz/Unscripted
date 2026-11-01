@@ -202,7 +202,8 @@
 
       const label=part.interviewQuestion?"Interview answer "+(++questionIndex):part.parentQuestionId?"Added thought":part.reflectionAnswer?"Another perspective "+(++perspectiveIndex):part.type==="note"?"Written thought":(++recordingIndex===1?"First recording":"Recording "+recordingIndex);
       const card=make("section","recording-archive-card");card.dataset.partId=part.id;
-      card.append(make("h3","recording-label",label));
+      card.setAttribute("aria-label",label);
+      if(!hasAudio)card.append(make("h3","recording-label",label));
       if(part.question)card.append(make("p","recording-question",part.question));
       if(hasAudio)card.append(window.UnscriptedRecordingPlayer.create(part.clips,getAudio,label,{entryId:entry.id,title:entry.title}));
       const date=make("time","voice-note-date",fmtDate(part.createdAt)+" · "+fmtTime(part.createdAt));date.dateTime=part.createdAt;card.append(date);
@@ -487,7 +488,7 @@
     panel.replaceChildren();panel.open=expandedCorrections.has(entry.id);
     panel.ontoggle=()=>{if(panel.open)expandedCorrections.add(entry.id);else expandedCorrections.delete(entry.id);};
     const heading=make("summary","","Did I understand you wrong?");
-    const label=make("label","tiny","Leave a note for the AI");label.htmlFor="summaryCorrectionText";
+    const label=make("label","tiny","What should I understand differently?");label.htmlFor="summaryCorrectionText";
     const input=make("textarea");input.id="summaryCorrectionText";input.rows=2;input.maxLength=2000;
     input.placeholder="e.g. Not Tiffy, Pippy — that’s my friend’s name.";
     input.value=correctionDrafts.has(entry.id)?correctionDrafts.get(entry.id):(entry.summaryCorrection||"");
@@ -496,7 +497,11 @@
     const button=make("button","button-soft",busy?"Updating…":"Update summary");button.type="button";button.disabled=busy;
     const status=make("p","tiny correction-status");status.setAttribute("role","status");
     button.onclick=async()=>{button.disabled=true;input.disabled=true;status.textContent="Saving your note…";try{await applySummaryCorrection(entry.id,input.value);}catch(error){status.textContent=error.message;button.disabled=false;input.disabled=false;}};
-    panel.append(heading,label,input,make("p","tiny","Saved for this entry’s future summaries. Your original recording and transcript stay unchanged."),button,status);
+    const cancel=make("button","correction-cancel","Cancel");cancel.type="button";
+    cancel.onclick=()=>{correctionDrafts.delete(entry.id);input.value=entry.summaryCorrection||"";expandedCorrections.delete(entry.id);panel.open=false;heading.focus();};
+    const actions=make("div","correction-actions");actions.append(cancel,button);
+    const editor=make("div","correction-editor");editor.append(label,input,actions,status);
+    panel.append(heading,editor);
   }
   async function processEntry(id) {
     // Use the existing organize endpoint so correction notes work with installed backends too.
