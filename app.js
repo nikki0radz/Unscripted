@@ -151,6 +151,7 @@
     $("entrySummary").textContent = entry.summary || (transcriptText(entry) ? "No summary yet. You can write one yourself or connect AI." : "No summary yet. Your original audio is saved; nothing has been invented.");
     let mainSummary=$("entrySummaryViews");if(!mainSummary){mainSummary=make("div");mainSummary.id="entrySummaryViews";$("entrySummary").after(mainSummary);}
     $("entrySummary").hidden=true;mainSummary.replaceChildren(summarySwitch(entry.id,entry.summary,entry.bulletPoints,()=>processEntry(entry.id)));
+    renderSummaryCorrection(entry,mainSummary);
 
     const tags = $("entryTags"); tags.replaceChildren();
     if (!(entry.tags || []).length) tags.append(make("span", "muted", "No topics yet."));
@@ -454,7 +455,45 @@
       throw error;
     } finally { clearTimeout(timeout); }
   }
+  const correctionDrafts=new Map(),expandedCorrections=new Set();
+  async function applySummaryCorrection(id,value) {
+    if(state.processing.has(id))throw Error("Wait for this summary to finish, then try again.");
+    if(!activeAI())throw Error("Connect your AI in Settings before updating the summary.");
+    const fresh=await transaction("entries","readonly",store=>store.get(id));
+    if(!fresh)throw Error("This entry no longer exists.");
+    fresh.summaryCorrection=String(value).trim().slice(0,2000);
+    fresh.summaryEdited=false;
+    await saveEntry(fresh);
+    correctionDrafts.delete(id);
+    await refreshEntries();
+    await processEntry(id);
+  }
+  function renderSummaryCorrection(entry,anchor) {
+    let panel=$("summaryCorrection");
+    if(!panel){panel=make("details","summary-correction");panel.id="summaryCorrection";anchor.after(panel);}
+    panel.replaceChildren();panel.open=expandedCorrections.has(entry.id);
+    panel.ontoggle=()=>{if(panel.open)expandedCorrections.add(entry.id);else expandedCorrections.delete(entry.id);};
+    const heading=make("summary","","Did I understand you wrong?");
+    const label=make("label","tiny","Leave a note for the AI");label.htmlFor="summaryCorrectionText";
+    const input=make("textarea");input.id="summaryCorrectionText";input.rows=2;input.maxLength=2000;
+    input.placeholder="e.g. Not Tiffy, Pippy — that’s my friend’s name.";
+    input.value=correctionDrafts.has(entry.id)?correctionDrafts.get(entry.id):(entry.summaryCorrection||"");
+    input.oninput=()=>correctionDrafts.set(entry.id,input.value);
+    const busy=state.processing.has(entry.id);input.disabled=busy;
+    const button=make("button","button-soft",busy?"Updating…":"Update summary");button.type="button";button.disabled=busy;
+    const status=make("p","tiny correction-status");status.setAttribute("role","status");
+    button.onclick=async()=>{button.disabled=true;input.disabled=true;status.textContent="Saving your note…";try{await applySummaryCorrection(entry.id,input.value);}catch(error){status.textContent=error.message;button.disabled=false;input.disabled=false;}};
+    panel.append(heading,label,input,make("p","tiny","Saved for this entry’s future summaries. Your original recording and transcript stay unchanged."),button,status);
+  }
   async function processEntry(id) {
+    // Use the existing organize endpoint so correction notes work with installed backends too.
+    const correctedContent=(content,entry)=>{
+      const note=typeof entry.summaryCorrection==="string"?entry.summaryCorrection.trim().slice(0,2000):"";
+      if(!note||!content.length)return content;
+      const result=content.slice(),index=Math.min(content.length,100)-1;
+      result[index]={...content[index],text:content[index].text+"\n\nOWNER CORRECTION (added after listening): The diary owner clarified the recording. Use this correction wherever the earlier transcript misheard or misunderstood them; keep unrelated details unchanged. This is a clarification of the recorded events, not an additional event to narrate. Owner’s correction: "+note};
+      return result;
+    };
     if (window.UnscriptedPerspective?.recording()) { showToast("Finish your reflection recording first."); return; }
     if (state.processing.has(id)) return;
     state.pauseTranscription.delete(id);
@@ -508,17 +547,17 @@
       if (state.pauseTranscription.has(id)) return;
       for(const reflection of allParts(entry).filter(p=>(p.reflectionAnswer||p.interviewQuestion)&&!p.skipped)) {
         if(state.pauseTranscription.has(id))return;
-        if(reflection.summary&&reflection.bulletPoints?.length)continue;
+        if(reflection.summary&&reflection.bulletPoints?.length&&(reflection.summaryCorrectionApplied||"")===(entry.summaryCorrection||""))continue;
         const answer=reflection.answer||reflection.text||"";
         if(!answer.trim())continue;
-        const result=await callAI("/organize",{content:[{createdAt:reflection.createdAt,type:"reflection answer",text:"Question (context only): "+(reflection.interviewQuestion?interviewQuestionText(entry,reflection):reflection.question)+"\nYour answer: "+answer}],style:summaryStyle(entry),personalProfile:(localStorage.getItem("unscripted-personal-profile")||"").slice(0,4000)});
-        await persist(fresh=>{const part=fresh.parts.find(p=>p.id===reflection.id);if(part){part.summary=result.summary||"";part.bulletPoints=Array.isArray(result.bulletPoints)?result.bulletPoints:[];}});
+        const result=await callAI("/organize",{content:correctedContent([{createdAt:reflection.createdAt,type:"reflection answer",text:"Question (context only): "+(reflection.interviewQuestion?interviewQuestionText(entry,reflection):reflection.question)+"\nYour answer: "+answer}],entry),style:summaryStyle(entry),personalProfile:(localStorage.getItem("unscripted-personal-profile")||"").slice(0,4000)});
+        await persist(fresh=>{const part=fresh.parts.find(p=>p.id===reflection.id);if(part){part.summary=result.summary||"";part.bulletPoints=Array.isArray(result.bulletPoints)?result.bulletPoints:[];part.summaryCorrectionApplied=entry.summaryCorrection||"";}});
         if(state.view==="entry"&&state.selected===id)renderEntry();
       }
       if(entry.kind==="interview"&&!entry.interview?.complete)return;
       const content = sortedParts(entry).filter(p=>!p.reflectionAnswer||p.parentQuestionId).map((part) => ({ createdAt: part.createdAt, type: part.type, text: part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || "").join(" ") })).filter((p) => p.text?.trim());
       if (!content.length) { if(allParts(entry).some(p=>p.reflectionAnswer&&p.summary))return; throw new Error("There's no transcribed or written text to summarise yet."); }
-      const data = await callAI("/organize", { content, style:summaryStyle(entry), existingTitle: entry.title, existingTags: entry.tags || [], personalProfile: (localStorage.getItem("unscripted-personal-profile") || "").slice(0,4000) });
+      const data = await callAI("/organize", { content:correctedContent(content,entry), style:summaryStyle(entry), existingTitle: entry.title, existingTags: entry.tags || [], personalProfile: (localStorage.getItem("unscripted-personal-profile") || "").slice(0,4000) });
       const fresh = await transaction("entries", "readonly", store => store.get(id));
       if (!fresh) return;
       entry = fresh;

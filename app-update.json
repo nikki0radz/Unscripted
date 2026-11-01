@@ -1,9 +1,9 @@
 {
   "packageName": "com.nikki.unscripted",
-  "versionCode": 10,
-  "versionName": "1.0.9",
-  "downloadUrl": "https://nikki0radz.github.io/Unscripted/downloads/Unscripted-1.0.9.apk",
-  "sha256": "b9ba995ed6481cb17b9158fbfd1d5e598f663531d1c6bf1b030b2394eca14bdd",
+  "versionCode": 11,
+  "versionName": "1.0.10",
+  "downloadUrl": "https://nikki0radz.github.io/Unscripted/downloads/Unscripted-1.0.10.apk",
+  "sha256": "63555e56f84058d6127c43e36e0f071c7cb65c648c72a7a246413e7a350ba6b1",
   "sizeBytes": 1559141,
-  "notes": "Background playback controls, compact voice notes, recording timestamps and clear play/pause icons."
+  "notes": "Matching handwritten U notification icon and saved AI correction notes beneath summaries."
 }

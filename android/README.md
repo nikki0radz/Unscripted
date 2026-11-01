@@ -1,4 +1,4 @@
-# Unscripted for Android 1.0.9
+# Unscripted for Android 1.0.10
 
 Package: `com.nikki.unscripted`. Android 8 (API 26) or newer; target API 35.
 The shell bundles the diary frontend and connects to the existing private Unscripted backend. Sign in with the existing diary access code. The current WebView does not guarantee passkey support; access-code login remains available.
@@ -6,7 +6,7 @@ The shell bundles the diary frontend and connects to the existing private Unscri
 ## Install and move your diary
 
 1. In the existing browser/PWA diary, use Settings → Export backup. Keep the original diary installed until the transfer is checked.
-2. Install the signed `downloads/Unscripted-1.0.9.apk`. Android may ask permission to install apps from the browser/download manager.
+2. Install the signed `downloads/Unscripted-1.0.10.apk`. Android may ask permission to install apps from the browser/download manager.
 3. Open Unscripted, sign in with the existing access code and allow microphone access. Allow notifications to see ongoing recording/processing status.
 4. Settings → Import backup; select the exported JSON. Verify entry counts, transcripts and playback of several original recordings. Encrypted cloud restore is also available with the existing recovery password.
 5. Record a disposable 30-second entry, lock the phone, speak for another 30 seconds, reopen and save. Check the whole audio and transcription before relying on background capture for a long entry.
@@ -84,3 +84,11 @@ Audio playback uses a separate native mediaPlayback foreground service, Android 
 Voice-note cards have less vertical padding, a recording timestamp below on the right, and separate SVG play/pause states. Existing transcription completion alerts remain intact.
 
 Validation: SDK compilation/D8/package build, signing-certificate match, APK signature verification, native bridge control/staging/reattachment tests, browser timeline tests, recording, transcription, backup and startup regression checks. No physical Android device or emulator was available: lock-screen controls, headphones, imported audio codecs and background playback need phone verification.
+
+## 1.0.10 matching notification artwork and summary corrections
+
+The notification vector is a monochrome silhouette traced directly from launcher_art.png, including the handwritten underline; Android controls the displayed colour. The launcher image is unchanged.
+
+A collapsible “Did I understand you wrong?” section beneath the entry summary accepts up to 2,000 characters of owner clarification. Update summary saves the note on the entry and explicitly permits refreshing a manually edited summary. The existing organize endpoint receives the clarification with its source material, including on later refreshes and reflection/interview summaries. Saved transcripts/audio are unchanged; existing summaries remain until a successful replacement, and failed requests keep the correction for retry. Notes are per entry, not global name substitutions, and travel with the existing entry backup data. No new backend route or deployment is required.
+
+Tests cover correction persistence, request contents, no retranscription, unchanged originals, all 100 source parts retained, failures, busy guards, native playback, transcription notifications and backup import. The compiled notification silhouette was visually checked; phone notification rendering and AI wording still require use on device.

@@ -256,3 +256,11 @@ html,body{font-family:var(--reading-font);font-size:var(--reading-size)}button,i
 .app-update-banner[hidden],#downloadAppUpdate[hidden],#appUpdatesSettings[hidden]{display:none!important}
 .app-update-banner .button-soft{flex-shrink:0;padding:10px 12px;border-radius:999px;font-size:inherit}
 @media(max-width:360px){.app-update-banner{flex-direction:column;align-items:stretch}.app-update-banner .button-soft{width:100%}}
+
+/* Small, entry-specific correction notes beneath the summary. */
+.summary-correction{margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}
+.summary-correction>summary{cursor:pointer;color:var(--muted);font-size:calc(12px * var(--text-scale,1))}
+.summary-correction label{display:block;margin:14px 0 6px}
+.summary-correction textarea{width:100%;min-height:70px;resize:vertical;padding:10px 12px;border-radius:12px}
+.summary-correction .button-soft{padding:8px 14px;font-size:calc(12px * var(--text-scale,1))}
+.correction-status:empty{display:none}
