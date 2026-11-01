@@ -1,24 +1,41 @@
 /* One seekable timeline over independently saved audio clips. */
 (() => {
   const clock = seconds => { seconds=Math.max(0,Math.floor(seconds||0)); return (seconds>=3600?Math.floor(seconds/3600)+':'+String(Math.floor(seconds%3600/60)).padStart(2,'0'):Math.floor(seconds/60))+':'+String(seconds%60).padStart(2,'0'); };
+  function icon(playing){return '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">'+(playing?'<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>':'<path d="M7 4v16l14-8z"/>')+'</svg>';}
   function locate(durations,time) {
     let offset=0;
     for(let i=0;i<durations.length;i++){if(time<offset+durations[i]||i===durations.length-1)return {index:i,local:Math.max(0,time-offset)};offset+=durations[i];}
     return {index:0,local:0};
   }
-  function create(segments,load,label) {
+  function create(segments,load,label,options={}) {
     const root=document.createElement('div');root.className='recording-player';
     const audio=document.createElement('audio');audio.preload='metadata';
-    const button=document.createElement('button');button.type='button';button.textContent='▶';button.setAttribute('aria-label','Play '+label);
+    const button=document.createElement('button');button.type='button';button.innerHTML=icon(false);button.setAttribute('aria-label','Play '+label);
     const time=document.createElement('span');time.className='recording-player-time';
     const seek=document.createElement('input');seek.type='range';seek.min=0;seek.step=.1;seek.value=0;seek.setAttribute('aria-label','Seek within '+label);
     const status=document.createElement('span');status.className='tiny';status.setAttribute('role','status');
     root.append(button,time,seek,audio,status);
+    const bridge=window.UnscriptedAndroid;
+    if(bridge?.playbackWrite&&segments.length){
+      const token=String(segments[0].id).replace(/[^a-zA-Z0-9_-]/g,'').slice(0,100)+'-'+segments.length;
+      let disposed=false,preparing=false,playing=false,ended=false,position=0,duration=segments.reduce((n,s)=>n+(s.duration||0),0),staged=false,request=0;
+      const send=(action,data={})=>bridge.playback(action,JSON.stringify(data));
+      const paint=()=>{button.innerHTML=icon(playing);button.setAttribute('aria-label',(playing?'Pause ':'Play ')+label);time.textContent=clock(position/1000)+' / '+clock(duration/1000);seek.max=duration/1000;seek.value=position/1000;seek.setAttribute('aria-valuetext',time.textContent);};
+      const sync=()=>{if(disposed)return;const state=JSON.parse(bridge.playbackStatus());if(state.token===token){position=state.position||0;duration=state.duration||duration;playing=!!state.playing;if(state.error)status.textContent=state.error;if(state.ended&&!ended)root.dispatchEvent(new Event('unscripted-session-ended'));ended=!!state.ended;}else playing=false;paint();};
+      const stage=async()=>{if(staged)return;for(let i=0;i<segments.length;i++){const blob=await load(segments[i].id);if(!blob?.size)throw Error('Audio missing from this device. Try restoring a backup.');for(let offset=0;offset<blob.size;offset+=196608){if(disposed)throw Error('Recording closed');const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob.slice(offset,offset+196608));});const error=bridge.playbackWrite(token,i,data,offset>0);if(error)throw Error(error);}}staged=true;};
+      root.play=async()=>{if(preparing||disposed)return;status.textContent='';const attempt=++request;preparing=true;button.disabled=true;try{bridge.requestNotifications?.();const state=JSON.parse(bridge.playbackStatus());if(state.token===token&&state.active){send('play');}else{status.textContent='Preparing audio…';await stage();if(disposed||attempt!==request)return;send('load',{token,entryId:options.entryId||'',title:options.title||label,clips:segments.map(s=>({duration:s.duration||1}))});}playing=true;status.textContent='';paint();}finally{preparing=false;button.disabled=false;}};
+      root.pause=()=>{request++;const state=JSON.parse(bridge.playbackStatus());if(state.token===token)send('pause');playing=false;paint();};
+      root.restartFromBeginning=()=>{root.pause();send('seek',{position:0});};
+      root.dispose=()=>{disposed=true;clearInterval(timer);};
+      button.onclick=()=>{if(playing)root.pause();else root.play().catch(error=>{status.textContent=error.message;});};
+      seek.oninput=()=>{const state=JSON.parse(bridge.playbackStatus());if(state.token===token)send('seek',{position:Number(seek.value)*1000});};
+      const timer=setInterval(sync,500);sync();return root;
+    }
     const durations=segments.map(s=>Math.max(.001,(s.duration||0)/1000));let sources=[],index=0,pending=null,wantsPlay=false,disposed=false;
     const report=error=>{if(!disposed&&error.name!=='AbortError')status.textContent=error.message;};
     const total=()=>durations.reduce((a,b)=>a+b,0);
     const position=()=>durations.slice(0,index).reduce((a,b)=>a+b,0)+(pending??audio.currentTime??0);
-    const render=()=>{seek.max=total();seek.value=Math.min(total(),position());time.textContent=clock(position())+' / '+clock(total());seek.setAttribute('aria-valuetext',time.textContent);button.textContent=wantsPlay?'Ⅱ':'▶';button.setAttribute('aria-label',(wantsPlay?'Pause ':'Play ')+label);};
+    const render=()=>{seek.max=total();seek.value=Math.min(total(),position());time.textContent=clock(position())+' / '+clock(total());seek.setAttribute('aria-valuetext',time.textContent);button.innerHTML=icon(wantsPlay);button.setAttribute('aria-label',(wantsPlay?'Pause ':'Play ')+label);};
     function change(target,resume){const point=locate(durations,Math.min(total(),Math.max(0,target)));wantsPlay=resume;pending=point.local;const changed=index!==point.index||!audio.src;index=point.index;if(changed&&sources[index])audio.src=sources[index];else if(audio.readyState>=1){audio.currentTime=pending;pending=null;}render();if(resume&&sources[index])return audio.play();return Promise.resolve();}
     const ready=Promise.all(segments.map(s=>load(s.id))).then(blobs=>{if(disposed)return;if(!blobs.length||blobs.some(b=>!b))throw Error('Audio missing from this device. Try restoring a backup.');sources=blobs.map(b=>URL.createObjectURL(b));audio.src=sources[index];button.disabled=false;seek.disabled=false;});
     ready.catch(error=>{status.textContent=error.message;});button.disabled=true;seek.disabled=true;

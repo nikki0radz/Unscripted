@@ -95,6 +95,19 @@ public class MainActivity extends Activity {
  @Override public void onBackPressed(){web.evaluateJavascript("window.UnscriptedDiary?.recording()?window.UnscriptedDiary.toast('Save or pause your recording before leaving.'):history.back()",null);}
  class Bridge {
   @JavascriptInterface public boolean available(){return true;}
+  @JavascriptInterface public String playbackStatus(){return PlaybackService.snapshot;}
+  @JavascriptInterface public String playbackWrite(String token,int index,String data,boolean append){
+   if(!PlaybackService.safe(token)||index<0||index>9999||data.length()>400000)return "Invalid audio";
+   try(FileOutputStream out=new FileOutputStream(PlaybackService.file(MainActivity.this,token,index),append)){out.write(android.util.Base64.decode(data,android.util.Base64.DEFAULT));return "";}catch(Exception e){return "Could not prepare audio. Check device storage.";}
+  }
+  @JavascriptInterface public void playback(String action,String data){main.post(()->{try{
+   if(!Arrays.asList("load","play","pause","stop","seek","back").contains(action))return;
+   if(!action.equals("load")&&PlaybackService.instance==null)return;
+   Intent i=new Intent(MainActivity.this,PlaybackService.class).setAction(action).putExtra("data",data);
+   if(action.equals("seek"))i.putExtra("position",new JSONObject(data).optLong("position"));
+   startForegroundService(i);
+  }catch(Exception e){android.widget.Toast.makeText(MainActivity.this,"Could not start audio playback",1).show();}});}
+
   @JavascriptInterface public void transcriptionFinished(String entryId,String revision){main.post(()->AppNotifications.transcriptionFinished(MainActivity.this,entryId,revision));}
   @JavascriptInterface public String notificationEntry(){return Objects.toString(getIntent().getStringExtra("notificationEntry"),"");}
   @JavascriptInterface public void clearNotificationEntry(){getIntent().removeExtra("notificationEntry");}
@@ -108,7 +121,7 @@ public class MainActivity extends Activity {
   @JavascriptInterface public String command(String action,String metadata){
    final String[] answer={"{}"};CountDownLatch latch=new CountDownLatch(1);
    main.post(()->{try{
-    if(action.equals("start")){Intent i=new Intent(MainActivity.this,BackgroundService.class);i.setAction("record");i.putExtra("metadata",metadata);startForegroundService(i);answer[0]="{\"starting\":true}";}
+    if(action.equals("start")){if(PlaybackService.instance!=null)PlaybackService.instance.pause();Intent i=new Intent(MainActivity.this,BackgroundService.class);i.setAction("record");i.putExtra("metadata",metadata);startForegroundService(i);answer[0]="{\"starting\":true}";}
     else if(BackgroundService.instance!=null)answer[0]=BackgroundService.instance.command(action,metadata).toString();
     else if(action.equals("status"))answer[0]=BackgroundService.savedStatus(MainActivity.this).toString();
    }catch(Exception e){answer[0]="{\"error\":"+JSONObject.quote(e.getMessage())+"}";}finally{latch.countDown();}});

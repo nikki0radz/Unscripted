@@ -193,7 +193,11 @@ html,body{font-family:var(--reading-font);font-size:var(--reading-size)}button,i
 #quizRecorderControls #quizPause{grid-column:2;grid-row:2;padding:5px 10px;min-height:30px;justify-self:center;font-size:calc(11px * var(--text-scale,1))}
 
 /* Voice-note controls and truthful, indeterminate request activity. */
-.part-card:has(.recording-player){border-radius:34px!important;padding:14px 18px!important}
+.part-card:has(.recording-player){border-radius:24px!important;padding:6px 12px!important}
+.voice-note-wrap{min-width:0}
+.voice-note-date{display:block;text-align:right;color:var(--muted);font-size:calc(10px * var(--text-scale,1));line-height:1.4;margin:4px 10px 0}
+.recording-player button{text-decoration:none!important;border-bottom:1px solid var(--line);min-height:36px}
+.recording-player button svg{display:block;pointer-events:none}
 .entry-action-row .button-soft{align-items:center!important;justify-content:center!important;text-align:center!important;border-radius:24px;gap:10px;min-height:100px;padding:15px 8px}
 .entry-action-row .entry-action-icon{display:grid;place-items:center;width:25px;height:25px;flex-shrink:0;font-size:0}
 .entry-action-row .button-soft>span:last-child{width:100%;text-align:center}

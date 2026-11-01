@@ -23,6 +23,8 @@ jobs:
       - run: python3 tests/android-startup.py
       - run: node tests/android-client.cjs
       - run: node tests/transcription-notifications.cjs
+      - run: node tests/native-playback.cjs
+      - run: node tests/recording-player.cjs
       - run: node tests/backup-import.cjs
       - uses: android-actions/setup-android@v3
         with:

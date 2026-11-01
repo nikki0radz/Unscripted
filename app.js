@@ -114,7 +114,7 @@
         function answerSection(item,extra=false){
           const section=make("section",extra?"interview-added-thought":"interview-original-answer");
           if(extra)section.append(make("div","tiny","Added thought · "+fmtDate(item.createdAt)));
-          if(item.clips?.length)section.append(window.UnscriptedRecordingPlayer.create(item.clips,getAudio,extra?"added thought":"interview answer"));
+          if(item.clips?.length)section.append(window.UnscriptedRecordingPlayer.create(item.clips,getAudio,extra?"added thought":"interview answer",{entryId:entry.id,title:entry.title}));
           if((item.clips||[]).some(c=>!c.transcript&&!c.transcriptionComplete)){const retry=make("button","text-action","⚠ Continue transcription");retry.onclick=()=>processEntry(entry.id);section.append(retry);}
           section.append(summarySwitch(item.id,item.summary,item.bulletPoints,()=>processEntry(entry.id)));
           const transcript=make("details","reflection-transcript");transcript.append(make("summary","","Full transcript"),make("p","reflection-answer-text",item.answer||"Audio saved; transcript pending."));section.append(transcript);content.append(section);
@@ -128,7 +128,7 @@
         const edit = make("button", "", "Edit note"); edit.type = "button"; edit.onclick = () => openEditor("Edit note", part.text || "", async (value) => { part.text = value; await saveEntry(entry); await refreshEntries(); renderEntry(); if (activeAI()) processEntry(entry.id); }); box.append(edit);
       } else {
         const segments = part.clips || [];
-        const audio = window.UnscriptedRecordingPlayer.create(segments, getAudio, "recording " + (index + 1));
+        const audio = window.UnscriptedRecordingPlayer.create(segments, getAudio, "recording " + (index + 1),{entryId:entry.id,title:entry.title});
         box.append(audio);
         const pending = segments.filter((s) => !s.transcript && !s.transcriptionComplete).length;
         if (pending) {
@@ -137,7 +137,11 @@
           warning.style.color = "#f1a1a1"; box.append(warning);
         }
       }
-      container.append(box);
+      if(part.type === "recording"){
+        head.remove();
+        const wrap=make("div","voice-note-wrap"),stamp=make("time","voice-note-date",fmtDate(part.createdAt)+" · "+fmtTime(part.createdAt));
+        stamp.dateTime=part.createdAt;wrap.append(box,stamp);container.append(wrap);
+      }else container.append(box);
     });
     if (!entry.parts?.length) container.append(make("div", "empty-state", "Add a recording or a written note to begin."));
     renderTranscriptionProgress(entry);
@@ -688,7 +692,7 @@
       const card=make("section","reflection-answer-card");
       card.append(make("div","tiny",fmtDate(item.createdAt,true)),make("h3","reflection-question",item.question));
       if(!item.legacy){
-        if(item.clips?.length)card.append(window.UnscriptedRecordingPlayer.create(item.clips,getAudio,"reflection answer"));
+        if(item.clips?.length)card.append(window.UnscriptedRecordingPlayer.create(item.clips,getAudio,"reflection answer",{entryId:entry.id,title:entry.title}));
         const pending=(item.clips||[]).filter(c=>!c.transcript&&!c.transcriptionComplete).length;
         if(pending){const status=make("div","reflection-pending","⚠ "+pending+" audio clip"+(pending===1?"":"s")+" awaiting transcription");const retry=make("button","text-action",state.processing.has(entry.id)?"Transcribing…":"Continue transcription");retry.disabled=state.processing.has(entry.id);retry.onclick=()=>processEntry(entry.id);status.append(retry);card.append(status);}
         card.append(summarySwitch(item.id,item.summary,item.bulletPoints,()=>processEntry(entry.id)));

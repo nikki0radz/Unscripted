@@ -1,4 +1,4 @@
-# Unscripted for Android 1.0.8
+# Unscripted for Android 1.0.9
 
 Package: `com.nikki.unscripted`. Android 8 (API 26) or newer; target API 35.
 The shell bundles the diary frontend and connects to the existing private Unscripted backend. Sign in with the existing diary access code. The current WebView does not guarantee passkey support; access-code login remains available.
@@ -6,7 +6,7 @@ The shell bundles the diary frontend and connects to the existing private Unscri
 ## Install and move your diary
 
 1. In the existing browser/PWA diary, use Settings → Export backup. Keep the original diary installed until the transfer is checked.
-2. Install the signed `downloads/Unscripted-1.0.7.apk`. Android may ask permission to install apps from the browser/download manager.
+2. Install the signed `downloads/Unscripted-1.0.9.apk`. Android may ask permission to install apps from the browser/download manager.
 3. Open Unscripted, sign in with the existing access code and allow microphone access. Allow notifications to see ongoing recording/processing status.
 4. Settings → Import backup; select the exported JSON. Verify entry counts, transcripts and playback of several original recordings. Encrypted cloud restore is also available with the existing recovery password.
 5. Record a disposable 30-second entry, lock the phone, speak for another 30 seconds, reopen and save. Check the whole audio and transcription before relying on background capture for a long entry.
@@ -76,3 +76,11 @@ Tests cover release validation, hostile URLs, version comparisons, check throttl
 Ongoing recording/processing and completion notifications use a monochrome handwritten U. A separate Transcription finished channel posts once after all pending audio clips have been transcribed and saved, before summary generation. No completion alert is posted for partial/failed transcription or summary-only refreshes. Completion notifications contain no diary text; tapping opens the associated entry when the diary is loaded and no recording is active. Native notification revisions prevent duplicate alerts for the same set of clips. Existing Android notification permissions and channel settings apply.
 
 Device notification display, sound and tapping from a locked screen require phone verification. Processing still follows the existing native HTTP/WebView pipeline; notifications do not make work continue after force-stop.
+
+## 1.0.9 playback notification and compact voice notes
+
+Audio playback uses a separate native mediaPlayback foreground service, Android MediaSession and MediaPlayer. Recorded and imported clips are copied from IndexedDB into private temporary cache in bounded chunks; the source recordings remain untouched. Native clip sequencing, seeking, playback wake lock, audio-focus loss and headphone-disconnect pause do not depend on WebView timers. The notification uses the handwritten U and offers back 10 seconds, play/pause and stop; tapping opens the entry. Playback state reattaches after entry rendering. Recording start pauses playback. Old temporary playback cache is removed after 24 hours when the service next starts.
+
+Voice-note cards have less vertical padding, a recording timestamp below on the right, and separate SVG play/pause states. Existing transcription completion alerts remain intact.
+
+Validation: SDK compilation/D8/package build, signing-certificate match, APK signature verification, native bridge control/staging/reattachment tests, browser timeline tests, recording, transcription, backup and startup regression checks. No physical Android device or emulator was available: lock-screen controls, headphones, imported audio codecs and background playback need phone verification.

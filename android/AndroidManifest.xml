@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.nikki.unscripted" android:versionCode="9" android:versionName="1.0.8">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.nikki.unscripted" android:versionCode="10" android:versionName="1.0.9">
  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35"/>
  <uses-permission android:name="android.permission.INTERNET"/>
  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
@@ -7,11 +7,13 @@
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
  <uses-permission android:name="android.permission.WAKE_LOCK"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
  <uses-feature android:name="android.hardware.microphone" android:required="false"/>
  <application android:label="Unscripted" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:usesCleartextTraffic="false" android:supportsRtl="true">
   <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="orientation|screenSize|keyboardHidden|uiMode" android:windowSoftInputMode="adjustResize">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
   </activity>
   <service android:name=".BackgroundService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="microphone|dataSync"/>
+  <service android:name=".PlaybackService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="mediaPlayback"/>
  </application>
 </manifest>
