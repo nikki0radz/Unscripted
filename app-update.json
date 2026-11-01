@@ -1,0 +1,9 @@
+{
+  "packageName": "com.nikki.unscripted",
+  "versionCode": 8,
+  "versionName": "1.0.7",
+  "downloadUrl": "https://nikki0radz.github.io/Unscripted/downloads/Unscripted-1.0.7.apk",
+  "sha256": "1ac1da8975e2f4397938d08da070af8c685f780648b0eb6781495a025c912bf2",
+  "sizeBytes": 1546773,
+  "notes": "New handwritten U icon, circular adaptive launcher icon and automatic update checks."
+}

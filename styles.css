@@ -191,3 +191,64 @@ html,body{font-family:var(--reading-font);font-size:var(--reading-size)}button,i
 #quizRecorderControls .quiz-voice-meter{height:30px;gap:3px;margin:4px 0}
 #quizRecorderControls .quiz-voice-meter i{width:4px;flex:0 1 4px}
 #quizRecorderControls #quizPause{grid-column:2;grid-row:2;padding:5px 10px;min-height:30px;justify-self:center;font-size:calc(11px * var(--text-scale,1))}
+
+/* Voice-note controls and truthful, indeterminate request activity. */
+.part-card:has(.recording-player){border-radius:34px!important;padding:14px 18px!important}
+.entry-action-row .button-soft{align-items:center!important;justify-content:center!important;text-align:center!important;border-radius:24px;gap:10px;min-height:100px;padding:15px 8px}
+.entry-action-row .entry-action-icon{display:grid;place-items:center;width:25px;height:25px;flex-shrink:0;font-size:0}
+.entry-action-row .button-soft>span:last-child{width:100%;text-align:center}
+#transcriptionProgress{border-radius:999px!important;border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line))!important;background:var(--panel)!important;padding:14px 18px!important;gap:14px!important}
+#transcriptionProgress .tiny{color:var(--text)!important}
+#transcriptionProgress progress{height:6px!important;accent-color:var(--accent)!important;overflow:hidden;border:0;border-radius:999px;appearance:none;background:var(--panel2)}
+#transcriptionProgress progress::-webkit-progress-bar{background:var(--panel2);border-radius:999px}
+#transcriptionProgress progress::-webkit-progress-value{background:var(--accent);border-radius:999px;transition:width .3s}
+#transcriptionProgress progress::-moz-progress-bar{background:var(--accent);border-radius:999px}
+#transcriptionProgress .icon-button{color:var(--accent)!important;border-color:var(--line)!important}
+.ui-spinner,.is-loading::before{display:inline-block;width:20px;height:20px;box-sizing:border-box;border:2px solid color-mix(in srgb,var(--accent) 24%,transparent);border-top-color:var(--accent);border-radius:50%;animation:ui-spin .85s linear infinite;flex-shrink:0}
+.is-loading::before{content:"";width:16px;height:16px;margin-right:9px;vertical-align:middle}
+.work-indicator{position:fixed;z-index:110;top:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;border-radius:999px;padding:10px 16px;background:var(--panel);border:1px solid var(--line);color:var(--text);box-shadow:0 5px 20px #0004;font-size:13px;pointer-events:none}
+.work-indicator[hidden]{display:none}.is-working .entry-action-icon svg{animation:ui-spin 1.3s linear infinite}
+/* Immediate extra clearance; the final control arrangement is being chosen. */
+.recorder-sheet .record-controls{gap:24px}.recorder-sheet .record-controls button{min-height:52px;border-radius:999px}
+@media(max-width:600px){.recorder-sheet .record-controls{gap:42px}}
+@keyframes ui-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.ui-spinner,.is-loading::before,.is-working .entry-action-icon svg{animation:none!important;border-style:dashed}}
+#transcriptionProgress>div{position:relative;padding-left:30px}.transcription-spinner{position:absolute;left:0;top:50%;margin-top:-10px}
+
+/* Chosen recording layout: pause remains separate from confirmed finishing. */
+.recorder-sheet .record-controls{display:grid;grid-template-columns:minmax(0,1fr);gap:24px}
+.finish-recording-section{margin-top:6px;padding-top:24px;border-top:1px solid var(--line)}
+.finish-recording-section>#finishRecording{width:100%}
+.finish-recording-confirmation p{margin:0 0 16px;color:var(--text)}
+.finish-recording-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:stretch}
+.recorder-sheet .finish-recording-actions button{width:100%;min-width:0;min-height:60px;padding:12px 8px;white-space:normal;text-align:center;font-size:calc(14px * var(--text-scale,1))}
+#finishRecording[hidden],#finishRecordingConfirmation[hidden]{display:none!important}
+.entry-action-row .button-soft{display:grid!important;grid-template-rows:26px minmax(36px,auto);align-content:center;align-items:center!important;justify-items:center;row-gap:9px}
+.entry-action-row .entry-action-icon{width:26px;height:26px;line-height:0;align-self:center}
+.entry-action-icon svg{display:block;width:23px;height:23px;overflow:visible}
+.entry-action-row .button-soft>span:last-child{align-self:center;line-height:1.35}
+
+/* Compact settings index: native accessible disclosure controls. */
+.settings-group{margin:12px 0;border:1px solid var(--line);border-radius:24px;background:var(--panel);overflow:hidden}
+.settings-group>summary{display:flex;align-items:center;justify-content:space-between;gap:18px;min-height:78px;padding:18px 20px;list-style:none;cursor:pointer;touch-action:manipulation}
+.settings-group>summary::-webkit-details-marker{display:none}
+.settings-group>summary::marker{content:""}
+.settings-group-title{display:flex;flex-direction:column;gap:5px;min-width:0}
+.settings-group-title strong{color:var(--text);font-family:var(--reading-font,inherit);font-size:calc(16px * var(--text-scale,1));line-height:1.35}
+.settings-group-title small{color:var(--muted);font-size:calc(12px * var(--text-scale,1));line-height:1.4}
+.settings-group-chevron{color:var(--accent);font-size:23px;line-height:1;flex-shrink:0;transition:transform .15s ease}
+.settings-group[open]>summary{border-bottom:1px solid var(--line)}
+.settings-group[open] .settings-group-chevron{transform:rotate(180deg)}
+.settings-group-content{padding:0 20px 8px}
+.settings-group .settings-card{margin:0;padding:20px 0;border:0;border-radius:0;background:none;box-shadow:none}
+.settings-group .settings-card+.settings-card{border-top:1px solid var(--line)}
+.settings-group>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-4px;border-radius:22px}
+@media(max-width:400px){.settings-group>summary{padding:16px}.settings-group-content{padding:0 16px 4px}}
+@media(prefers-reduced-motion:reduce){.settings-group-chevron{transition:none}}
+
+.brand .brand-mark{padding:0;border:0;background:none;overflow:hidden;border-radius:50%}
+.brand-mark img{display:block;width:100%;height:100%;object-fit:contain;transform:scale(1.14)}
+.app-update-banner{position:fixed;z-index:45;bottom:105px;left:50%;transform:translateX(-50%);width:min(440px,calc(100% - 32px));display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--line);border-radius:20px;padding:14px;background:var(--panel);color:var(--text);box-shadow:0 6px 30px #0005;font-size:calc(13px * var(--text-scale,1))}
+.app-update-banner[hidden],#downloadAppUpdate[hidden],#appUpdatesSettings[hidden]{display:none!important}
+.app-update-banner .button-soft{flex-shrink:0;padding:10px 12px;border-radius:999px;font-size:inherit}
+@media(max-width:360px){.app-update-banner{flex-direction:column;align-items:stretch}.app-update-banner .button-soft{width:100%}}

@@ -9,7 +9,7 @@ document:{getElementById:element},navigator:{mediaDevices:{getUserMedia:async()=
 localStorage:{getItem:()=>null},sessionStorage:{getItem:()=>null},
 window:{MediaRecorder:Recorder,indexedDB:{},dispatchEvent(){}}};
 let source=fs.readFileSync("app.js","utf8");
-source=source.replace("  init();", '  state.db = globalThis.fixtureDb; showToast=message=>{globalThis.lastToast=message};openEntry=id=>{state.selected=id};switchView=view=>{state.view=view};activeAI=()=>false;globalThis.testRecording={state,startRecording,startClip,flushClip,cancelRecording,updateRecorderUI,saveInterview,savePerspective,searchMatches,chooseAskSources,allClips};');
+source=source.replace("  init();", '  state.db = globalThis.fixtureDb; showToast=message=>{globalThis.lastToast=message};openEntry=id=>{state.selected=id};switchView=view=>{state.view=view};activeAI=()=>false;globalThis.testRecording={state,startRecording,requestFinishRecording,keepRecording,confirmFinishRecording,togglePause,startClip,flushClip,cancelRecording,updateRecorderUI,saveInterview,savePerspective,searchMatches,chooseAskSources,allClips};');
 context.fixtureDb=db;
 vm.runInNewContext(source,context);
 const T=context.testRecording;
@@ -45,5 +45,12 @@ const T=context.testRecording;
  const reflected=entries.get("entry"),part=reflected.parts.at(-1);assert.equal(part.reflectionAnswer,true);assert.equal(part.parentQuestionId,"q1","added thought remains linked to its original question");assert.equal(part.type,"note");assert(T.searchMatches(reflected,"more confident"));assert(T.chooseAskSources("confident").sources.some(x=>x.text.includes("more confident")));assert(T.allClips(reflected).some(x=>x.id===part.clips[0].id));assert(audios.has(part.clips[0].id));
  const count=audios.size;await assert.rejects(T.savePerspective("missing",{question:"Question?",answer:"Answer",audio:[{blob:new Blob(["discard"]),duration:10}]}));assert.equal(audios.size,count,"missing entry never leaves orphan audio");
  await assert.rejects(T.savePerspective("entry",{question:"Question?",answer:"",audio:[]}));
+ // Finishing must require a deliberate second action and preserve paused state on cancellation.
+ T.state.entries=structuredClone([...entries.values()]);await T.startRecording("entry");
+ const guarded=T.state.recording;T.requestFinishRecording();assert.equal(guarded.recorder.state,"recording");assert(!guarded.closing);assert.equal(element("finishRecordingConfirmation").hidden,false);
+ T.keepRecording();assert.equal(guarded.recorder.state,"recording");assert.equal(element("finishRecordingConfirmation").hidden,true);
+ T.togglePause();await stopTask;assert(guarded.paused);T.requestFinishRecording();T.keepRecording();assert(guarded.paused,"keep recording preserves an existing pause");
+ T.requestFinishRecording();T.confirmFinishRecording();await new Promise(resolve=>setImmediate(resolve));assert.equal(T.state.recording,null,"only the confirmed action finishes the session");
+ await T.startRecording("entry");assert.equal(element("finishRecordingConfirmation").hidden,true,"new recording resets confirmation");T.cancelRecording();await stopTask;
  console.log("Passed: initial timer, cancelling new/continued recordings, autosaved clip deletion and cancellation during an in-flight save.");
 })().catch(e=>{console.error(e);process.exit(1)});

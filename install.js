@@ -3,6 +3,7 @@
  * Browsers that do not expose beforeinstallprompt can still use their menu.
  */
 (() => {
+  if(window.UnscriptedNative)return;
   const button = document.getElementById("installAppButton");
   const status = document.getElementById("installAppStatus");
   if (!button || !status) return;

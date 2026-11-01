@@ -203,6 +203,7 @@ function cleanInterviewQuestion(text) {
       timer.textContent=String(Math.floor(seconds/60)).padStart(2,"0")+":"+String(seconds%60).padStart(2,"0");
     },250);
     try {
+      if(window.UnscriptedNative){const draw=()=>{if(voice!==recording)return;const level=window.UnscriptedNative.meter();$("quizVoiceMeter").querySelectorAll("i").forEach((bar,i)=>bar.style.height=(4+Math.min(1,level*4)*(12+i%4*5))+"px");recording.meterFrame=requestAnimationFrame(draw);};draw();return;}
       const AudioContext=window.AudioContext||window.webkitAudioContext;
       if(!AudioContext)return;
       const context=new AudioContext(),source=context.createMediaStreamSource(recording.stream),analyser=context.createAnalyser();
@@ -296,7 +297,7 @@ function cleanInterviewQuestion(text) {
     else{v.paused=false;interviewClip(v);$("quizPause").textContent="Pause";}
   };
   $("quizRetryAnswer").onclick=retryInterviewAnswer;
-  document.addEventListener("visibilitychange",()=>{if(document.hidden&&voice?.kind==="interview"&&!voice.paused)$("quizPause").onclick();});
+  document.addEventListener("visibilitychange",()=>{if(document.hidden&&!window.UnscriptedNative&&voice?.kind==="interview"&&!voice.paused)$("quizPause").onclick();});
   async function recordVoice() {
     if(busy)return;
     return recordInterviewVoice();
@@ -314,7 +315,7 @@ function cleanInterviewQuestion(text) {
     if(voice&&!await window.UnscriptedConfirm("Saved quiz answers will stay, but this unfinished voice answer will be discarded.",{title:"Close this voice answer?",confirmLabel:"Discard voice answer",danger:true}))return;
     answerPlayer?.pause();
     epoch++;clarification?.reset(false);
-    if(voice){voice.cancelled=true;voice.recorder.stop();}
+    if(voice){voice.cancelled=true;voice.recorder.discard?.();voice.recorder.stop();}
     if(mode&&data&&$("quizAnswer").value.trim()){
       // Keep an unfinished typed answer for when the quiz is resumed.
       data.draft=$("quizAnswer").value.slice(0,mode==="interview"?700000:6000);data.editing=editing;save();

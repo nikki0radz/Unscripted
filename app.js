@@ -187,6 +187,7 @@
         renderTranscriptionProgress(entry);
       } else processEntry(entry.id);
     };
+    if(busy){const spinner=make("span","ui-spinner transcription-spinner");spinner.setAttribute("aria-hidden","true");details.append(spinner);}
     panel.append(details, button);
   }
   function renderTranscript(entry) {
@@ -227,7 +228,7 @@
       const part = { type: "recording", id: uid(), createdAt: new Date().toISOString(), clips: [] };
       entry.parts.push(part); await saveEntry(entry); await refreshEntries();
       const recording = { entryId: entry.id, partId: part.id, stream, recorder: null, mime: supportedMime(), paused: false, closing: false, saving: false, totalMs: 0, clipStarted: 0, ticker: null, rotation: null };
-      state.recording = recording;
+      state.recording = recording;showFinishConfirmation(false);
       $("recordTarget").textContent = entry.parts.length === 1 ? "A new entry" : "Adding to “" + entry.title + "”";
       $("recorderSheet").hidden = false;
       $("recordTimer").textContent="00:00"; startClip(recording); updateRecorderUI();
@@ -239,6 +240,10 @@
     }
   }
   function startClip(rec) {
+    if(window.UnscriptedNative){
+      rec.native=true;rec.recorder={state:"recording"};rec.clipStarted=Date.now();
+      rec.nativeStarting=window.UnscriptedNative.start(rec.entryId,rec.partId);rec.nativeStarting.catch(e=>handleRecordingError(rec,e));return;
+    }
     if (rec.closing || rec.paused) return;
     let recorder;
     try { recorder = new MediaRecorder(rec.stream, { ...(rec.mime ? { mimeType: rec.mime } : {}), audioBitsPerSecond: 48000 }); }
@@ -280,9 +285,10 @@
     catch (error) { handleRecordingError(rec, error); }
   }
   function flushClip(rec) { if (!rec || rec.saving || rec.recorder?.state !== "recording") return; clearTimeout(rec.rotation); try { rec.recorder.stop(); } catch (error) { handleRecordingError(rec, error); } }
-  function handleRecordingError(rec, error) { console.error(error); showToast("Recording stopped: " + (error.message || "audio failure")); rec.closing = true; if (rec.recorder?.state === "recording") flushClip(rec); else finishRecordingSession(rec); }
+  function handleRecordingError(rec, error) { if(rec.native){showToast("Recording stopped: "+error.message);rec.closing=true;window.UnscriptedNative.finish().then(()=>finishRecordingSession(rec)).catch(e=>showToast(e.message));return;} console.error(error); showToast("Recording stopped: " + (error.message || "audio failure")); rec.closing = true; if (rec.recorder?.state === "recording") flushClip(rec); else finishRecordingSession(rec); }
   function updateRecorderUI() {
     const rec = state.recording; if (!rec) return;
+    if(rec.native){const s=window.UnscriptedNative.status();rec.totalMs=s.totalMs||rec.totalMs;rec.clipStarted=0;}
     const current = !rec.clipStarted || rec.saving || rec.paused || rec.closing ? 0 : Math.max(0, Date.now() - rec.clipStarted);
     $("recordTimer").textContent = fmtDuration(rec.totalMs + current);
     $("recorderSheet").classList.toggle("paused", rec.paused || rec.saving);
@@ -290,14 +296,26 @@
     $("pauseRecording").textContent = rec.paused ? "▶ Resume" : "Ⅱ Pause";
     $("pauseRecording").disabled = rec.saving || rec.closing;
     $("finishRecording").disabled = rec.closing;
+    $("confirmFinishRecording").disabled=rec.closing;
+    $("continueRecording").disabled=rec.closing;
   }
   function togglePause() {
+    if(window.UnscriptedNative&&state.recording?.native){const rec=state.recording;try{window.UnscriptedNative.command(rec.paused?'resume':'pause');rec.paused=!rec.paused;updateRecorderUI();window.UnscriptedNative.sync();}catch(e){showToast(e.message);}return;}
     const rec = state.recording; if (!rec || rec.saving || rec.closing) return;
     if (rec.paused) { rec.paused = false; startClip(rec); }
     else { rec.paused = true; if (rec.recorder?.state === "recording") flushClip(rec); }
     updateRecorderUI();
   }
+  function showFinishConfirmation(visible) {
+    $("finishRecordingConfirmation").hidden=!visible;$("finishRecording").hidden=visible;
+    $("finishRecording").setAttribute?.("aria-expanded",String(visible));
+    if(visible)$("continueRecording").focus?.();else $("finishRecording").focus?.();
+  }
+  function requestFinishRecording() {if(!state.recording||state.recording.closing)return;showFinishConfirmation(true);}
+  function keepRecording() {showFinishConfirmation(false);}
+  function confirmFinishRecording() {if(!state.recording||state.recording.closing)return;showFinishConfirmation(false);stopRecording();}
   function stopRecording() {
+    if(window.UnscriptedNative&&state.recording?.native){const rec=state.recording;if(rec.closing)return;rec.closing=true;updateRecorderUI();Promise.resolve(rec.nativeStarting).then(()=>window.UnscriptedNative.finish()).then(()=>finishRecordingSession(rec)).catch(e=>{rec.closing=false;showToast(e.message);});return;}
     const rec = state.recording; if (!rec || rec.closing) return;
     rec.closing = true;
     if (rec.recorder?.state === "recording") flushClip(rec);
@@ -311,6 +329,7 @@
   function cancelRecording() {
     const rec=state.recording;if(!rec||rec.closing)return;
     $("cancelRecordingModal").hidden=true;
+    if(window.UnscriptedNative&&rec.native){rec.cancelled=true;rec.closing=true;Promise.resolve(rec.nativeStarting).then(()=>window.UnscriptedNative.finish(true)).then(()=>finishRecordingSession(rec)).catch(e=>showToast(e.message));return;}
     rec.cancelled=true;rec.closing=true;
     clearTimeout(rec.rotation);clearInterval(rec.ticker);
     if(rec.recorder?.state==="recording")rec.recorder.stop();
@@ -360,7 +379,7 @@
         if(!part){part={id:partId,type:"note",interviewQuestion:true,interviewPending:true,createdAt:new Date().toISOString(),question:doc.question,sourceIds:doc.sourceIds||[],typedAnswer:doc.typedAnswer||"",answer:"",text:"Interview question: "+doc.question,clips:[]};entry.parts.push(part);}
         part.clips.push({id:clipId,duration,mime:blob.type,transcript:""});part.summary="";part.bulletPoints=[];tx.objectStore("audio").put({id:clipId,blob});entry.updatedAt=new Date().toISOString();store.put(entry);};
       tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error("Could not save interview audio."));
-    });await refreshEntries();window.dispatchEvent(new Event("unscripted-change"));return {entryId,answerId:partId};
+    });window.UnscriptedNative?.commit(blob);await refreshEntries();window.dispatchEvent(new Event("unscripted-change"));return {entryId,answerId:partId};
   }
   async function transcribeInterviewAnswer(entryId,answerId) {
     await processEntry(entryId);
@@ -410,8 +429,14 @@
   }
   function getApiConfig() { return { url: (privateHost() ? location.origin : localStorage.getItem("unscripted-api-url") || "").replace(/\/+$/, ""), code: sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || "" }; }
   async function callAI(path, body, asForm = false) {
+    window.UnscriptedWorkCount=(window.UnscriptedWorkCount||0)+1;window.dispatchEvent(new Event("unscripted-work"));
+    try{return await callAIRequest(path,body,asForm);}
+    finally{window.UnscriptedWorkCount=Math.max(0,(window.UnscriptedWorkCount||1)-1);window.dispatchEvent(new Event("unscripted-work"));}
+  }
+  async function callAIRequest(path, body, asForm = false) {
     if(!asForm)body={...body,style:body?.style??summaryStyle(null)};
     const { url, code } = getApiConfig(); if (!/^https:\/\//.test(url) || (!code && !privateHost())) throw new Error("Connect your private AI backend in Settings first.");
+    if(window.UnscriptedNative&&url===location.origin)return window.UnscriptedNative.callAI(path,body,asForm,code);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 120000);
     try {
@@ -441,6 +466,7 @@
         const index = state.entries.findIndex(e => e.id === id);
         if (index >= 0) state.entries[index] = fresh;
       };
+      if(window.UnscriptedNative){const jobs=JSON.parse(localStorage.getItem("unscripted-native-processing")||"[]");localStorage.setItem("unscripted-native-processing",JSON.stringify([...new Set([...jobs,id])]));}
       for (const part of sortedParts(entry)) {
         if (part.type !== "recording" && !part.reflectionAnswer && !part.interviewQuestion) continue;
         for (const clip of part.clips || []) {
@@ -450,7 +476,7 @@
           if (blob.size > 24 * 1024 * 1024) throw new Error("A clip is over 24 MB. Add it manually in smaller parts.");
           const form = new FormData(); const mime = blob.type || clip.mime || "audio/webm";
           const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm";
-          form.append("file", blob, "diary-clip." + ext);
+          form.append("file", blob, window.UnscriptedNative ? "native-"+clip.id+".m4a" : "diary-clip." + ext);
           const data = await callAI("/transcribe", form, true);
           if (typeof data.text !== "string") throw new Error("No transcript was returned. Continue to retry this clip.");
           clip.transcript = data.text.trim();
@@ -462,6 +488,7 @@
             if(reflection&&!reflection.answerEdited){reflection.answer=[reflection.typedAnswer||"",...(reflection.clips||[]).map(c=>c.transcript||"")].filter(Boolean).join("\n\n");reflection.text=(reflection.interviewQuestion?"Interview question: ":"Reflection question: ")+reflection.question+"\nYour answer: "+reflection.answer;}
             fresh.aiError = "";
           }); // persist each completed clip without overwriting concurrent edits
+          window.UnscriptedNative?.ackTranscript(clip.id);
           if (state.view === "entry" && state.selected === id) renderEntry();
         }
       }
@@ -495,7 +522,7 @@
     } catch (error) {
       const entry = state.entries.find((e) => e.id === id);
       if (entry) { entry.aiError = "Processing paused: " + error.message; await saveEntry(entry).catch(() => {}); }
-    } finally { state.processing.delete(id); state.pauseTranscription.delete(id); await refreshEntries().catch(() => {}); if (state.view === "entry" && state.selected === id) renderEntry(); else if (state.view === "home") renderHome(); }
+    } finally { state.processing.delete(id);if(window.UnscriptedNative){const jobs=JSON.parse(localStorage.getItem("unscripted-native-processing")||"[]");localStorage.setItem("unscripted-native-processing",JSON.stringify(jobs.filter(value=>value!==id)));} state.pauseTranscription.delete(id); await refreshEntries().catch(() => {}); if (state.view === "entry" && state.selected === id) renderEntry(); else if (state.view === "home") renderHome(); }
   }
   function renderSettings() { $("defaultToneControls").replaceChildren(toneControls(null)); $("apiUrl").value = getApiConfig().url; $("apiUrl").readOnly = privateHost(); $("privateSignOut").hidden = !privateHost(); window.dispatchEvent(new Event("unscripted-settings")); $("accessCode").value = sessionStorage.getItem("unscripted-access-code") || localStorage.getItem("unscripted-access-code") || ""; $("rememberCode").checked = !!localStorage.getItem("unscripted-access-code"); $("accentSwatch").style.background = getComputedStyle(document.documentElement).getPropertyValue("--accent"); }
   async function saveSettingsAndReturn(){
@@ -506,7 +533,7 @@
       const tone=$("defaultToneControls").firstElementChild;
       if(tone?.saveSettings&&!await tone.saveSettings())throw Error("Could not save your AI style. Please try again.");
       $("textStyleControls").saveSettings?.();
-      if(!saveApiSettings()){ $("settingsStatus").scrollIntoView({block:"center"});return; }
+      if(!saveApiSettings()){ const group=$("settingsStatus").closest?.(".settings-group");if(group)group.open=true;$("settingsStatus").scrollIntoView({block:"center"});return; }
       window.dispatchEvent(new Event("unscripted-change"));
       showToast("✓ Changes saved");
       await new Promise(resolve=>setTimeout(resolve,700));
@@ -695,7 +722,7 @@
         tx.objectStore("audio").put({id:clipId,blob});entry.updatedAt=new Date().toISOString();store.put(entry);
       };tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error("Could not save this audio."));
     });
-    await refreshEntries();window.dispatchEvent(new Event("unscripted-change"));return reflectionId;
+    window.UnscriptedNative?.commit(blob);await refreshEntries();window.dispatchEvent(new Event("unscripted-change"));return reflectionId;
   }
   async function finishPerspective(id,partId,answer) {
     const fresh=await transaction("entries","readonly",s=>s.get(id)),part=fresh?.parts.find(p=>p.id===partId);
@@ -739,6 +766,7 @@
         const blob = await getAudio(clip.id); if (!blob) throw Error("An audio clip is missing. Keep this diary installed and recover the clip from a previous backup before transferring."); if (blob) audios.push({ id: clip.id, content: await blobToDataURL(blob) });
       }
       const data = { app: "unscripted", version: 1, profiles: profileData(), profile: localStorage.getItem("unscripted-reflection-profile") || "", exportedAt: new Date().toISOString(), entries: state.entries, audios };
+      if(window.UnscriptedNative){window.UnscriptedNative.exportBackup(JSON.stringify(data),"unscripted-backup-"+new Date().toISOString().slice(0,10)+".json");showToast("Choose where to save your backup.");return true;}
       const file = new Blob([JSON.stringify(data)], { type: "application/json" });
       const link = document.createElement("a"); const url = URL.createObjectURL(file);
       link.href = url; link.download = "unscripted-backup-" + new Date().toISOString().slice(0, 10) + ".json"; document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
@@ -746,7 +774,19 @@
     } catch (error) { showToast("Could not export backup: " + error.message); return false; }
     finally { button.disabled = false; button.textContent = "↓ Export backup"; }
   }
-  function dataURLtoBlob(data) { const parts = data.match(/^data:([^;]+);base64,(.+)$/s); if (!parts) throw new Error("Invalid audio in backup"); const binary = atob(parts[2]); const bytes = new Uint8Array(binary.length); for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i); return new Blob([bytes], { type: parts[1] }); }
+  function dataURLtoBlob(data, fallbackMime = "application/octet-stream") {
+    // FileReader preserves MIME parameters, e.g. audio/webm;codecs=opus.
+    // Only the final ;base64, delimiter separates metadata from audio bytes.
+    if(typeof data!=="string"||!/^data:/i.test(data))throw Error("Audio is not a data URL.");
+    const delimiter=data.toLowerCase().indexOf(";base64,",5);
+    if(delimiter<0)throw Error("Audio is not base64 encoded.");
+    const mime=data.slice(5,delimiter).trim()||fallbackMime;
+    if(!/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+(?:;[^\r\n]*)?$/i.test(mime))throw Error("Audio has an invalid media type.");
+    let binary;try{binary=atob(data.slice(delimiter+8));}catch{throw Error("Audio contains incomplete or invalid base64 data.");}
+    if(!binary.length)throw Error("This audio clip is empty. Re-export it from the original diary.");
+    const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+    return new Blob([bytes],{type:mime});
+  }
   async function importBackup(file) {
     if (!file) return;
     if (!await window.UnscriptedConfirm("Entries with matching IDs will be replaced. Other entries will stay.",{title:"Import this backup?",confirmLabel:"Import backup"})) return;
@@ -755,7 +795,11 @@
       if (data.app !== "unscripted" || data.version !== 1 || !Array.isArray(data.entries) || !Array.isArray(data.audios)) throw new Error("Not an Unscripted v1 backup.");
       if(state.recording||state.processing.size)throw Error("Finish recording and processing before importing.");
       if(data.entries.some(e=>!e||typeof e.id!=="string"||!Array.isArray(e.parts)))throw Error("Invalid entry in backup.");
-      const audios=data.audios.map(row=>{if(!row||typeof row.id!=="string"||typeof row.content!=="string")throw Error("Invalid audio in backup.");return {id:row.id,blob:dataURLtoBlob(row.content)};});
+      const clipMimes=new Map(data.entries.flatMap(entry=>allClips(entry)).map(clip=>[clip.id,clip.mime]));
+      const audios=data.audios.map((row,index)=>{
+        try{if(!row||typeof row.id!=="string"||typeof row.content!=="string")throw Error("Missing audio content.");return {id:row.id,blob:dataURLtoBlob(row.content,clipMimes.get(row.id)||"application/octet-stream")};}
+        catch(error){throw Error("Recording "+(index+1)+" could not be read: "+error.message+" Nothing was imported.");}
+      });
       const audioIds=new Set(audios.map(row=>row.id));
       if(data.entries.some(entry=>allClips(entry).some(clip=>!audioIds.has(clip.id))))throw Error("Backup is incomplete: some recordings are missing. Nothing was imported.");
       await window.UnscriptedDiary.restore(data.entries,audios);
@@ -780,7 +824,7 @@
     $("homeLogo").onclick=()=>switchView("home");$("navLibrary").onclick=()=>switchView("home");$("navAsk").onclick=()=>switchView("ask");$("settingsButton").onclick=()=>switchView("settings");$("settingsBack").onclick=()=>switchView("home");$("entryBack").onclick=()=>switchView("home");
     $("startNewButton").onclick=()=>startRecording(null);$("navRecord").onclick=()=>startRecording(null);$("continueLastButton").onclick=()=>{if(state.entries[0])startRecording(state.entries[0].id);};$("searchInput").oninput=()=>{searchRevision++;semanticResults=null;renderHome();};
     $("cancelRecordingButton").onclick=requestCancelRecording;$("keepRecordingButton").onclick=()=>{$("cancelRecordingModal").hidden=true;};$("confirmCancelRecording").onclick=cancelRecording;
-    $("pauseRecording").onclick=togglePause;$("finishRecording").onclick=stopRecording;
+    $("pauseRecording").onclick=togglePause;$("finishRecording").onclick=requestFinishRecording;$("continueRecording").onclick=keepRecording;$("confirmFinishRecording").onclick=confirmFinishRecording;
     $("addToEntryButton").onclick=openChoice;$("choiceClose").onclick=closeChoice;$("choiceRecord").onclick=()=>{const id=state.selected;closeChoice();startRecording(id);};$("choiceWrite").onclick=()=>{const id=state.selected;closeChoice();writeThought(id);};$("addNoteButton").onclick=()=>writeThought(state.selected);
     $("editTitleButton").onclick=()=>{const entry=currentEntry();if(entry)openEditor("Give it a title",entry.title,async value=>{entry.title=value||"Untitled thought";entry.titleEdited=true;await saveEntry(entry);await refreshEntries();renderEntry();});};
     $("editSummaryButton").onclick=()=>{const entry=currentEntry();if(entry)openEditor("Edit summary",entry.summary||"",async value=>{entry.summary=value;entry.summaryEdited=true;await saveEntry(entry);await refreshEntries();renderEntry();});};
@@ -800,17 +844,38 @@
     window.addEventListener("resize",()=>{if(!$("colourModal").hidden)updatePicker();});
     document.addEventListener("keydown",(e)=>{if(e.key==="Escape"){if(!$("cancelRecordingModal").hidden){$("cancelRecordingModal").hidden=true;return;}if(!$("quizModal").hidden){$("quizClose").click();return;}if(!$("colourModal").hidden)closePicker(false);else if(!$("editorModal").hidden)closeEditor();else if(!$("choiceModal").hidden)closeChoice();}});
     window.addEventListener("beforeunload",(e)=>{if(state.recording){e.preventDefault();e.returnValue="";}});
-    document.addEventListener("visibilitychange",()=>{if(document.hidden && state.recording && !state.recording.paused)flushClip(state.recording);});
+    document.addEventListener("visibilitychange",()=>{if(document.hidden && !window.UnscriptedNative && state.recording && !state.recording.paused)flushClip(state.recording);});
   }
   async function init() {
     bindEvents(); bindEnhancements(); applyAccent(localStorage.getItem("unscripted-accent") || "#b8d2ab");
-    try { state.db = await getDb(); await refreshEntries(); renderHome(); }
+    try { state.db = await getDb(); await refreshEntries(); renderHome();if(window.UnscriptedNative){await window.UnscriptedNative.sync();for(const id of JSON.parse(localStorage.getItem("unscripted-native-processing")||"[]"))if(state.entries.some(e=>e.id===id))processEntry(id);} }
     catch (error) { showToast("Private storage unavailable: " + error.message); $("startNewButton").disabled=true; $("navRecord").disabled=true; }
-    if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register("./service-worker.js").catch(()=>{});
+    if(!window.UnscriptedNative && "serviceWorker" in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register("./service-worker.js").catch(()=>{});
     if("storage" in navigator && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
   }
+  async function nativeImport(clip,blob){
+    await new Promise((resolve,reject)=>{
+      const tx=state.db.transaction(["entries","audio"],"readwrite"),store=tx.objectStore("entries");
+      const entryId=clip.entryId||("recovered-"+clip.token),partId=clip.partId||clip.token;
+      const req=store.get(entryId);
+      req.onsuccess=()=>{let entry=req.result;if(!entry){entry=newEntry();entry.id=entryId;entry.title="Recovered Android recording";entry.createdAt=clip.createdAt||entry.createdAt;}
+        let part=entry.parts.find(p=>p.id===partId);if(!part){part={id:partId,type:"recording",createdAt:clip.createdAt||entry.createdAt,clips:[]};entry.parts.push(part);}
+        if(!part.clips.some(c=>c.id===clip.id)){tx.objectStore("audio").put({id:clip.id,blob});part.clips.push({id:clip.id,duration:clip.duration,mime:"audio/mp4",transcript:""});entry.updatedAt=new Date().toISOString();store.put(entry);}
+      };
+      tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error("Could not save native recording."));
+    });await refreshEntries();if(state.view==="home")renderHome();if(state.view==="entry")renderEntry();window.dispatchEvent(new Event("unscripted-change"));
+  }
+  function nativeStatus(s){
+    if(s.active&&s.metadata&&!s.metadata.simple&&!state.recording){
+      const m=s.metadata;state.recording={entryId:m.entryId,partId:m.partId,native:true,stream:{getTracks:()=>[]},recorder:{state:"recording"},paused:!!s.paused,totalMs:s.totalMs||0,clipStarted:0};
+      showFinishConfirmation(false);$("recordTarget").textContent="Your Android recording";$("recorderSheet").hidden=false;
+      state.recording.ticker=setInterval(updateRecorderUI,500);
+    }
+    if(state.recording?.native){state.recording.paused=!!s.paused;state.recording.totalMs=s.totalMs||state.recording.totalMs;updateRecorderUI();if(s.error&&!s.active&&!state.recording.closing){const rec=state.recording;rec.closing=true;showToast(s.error);finishRecordingSession(rec);}}
+  }
   window.UnscriptedDiary = {
-    pauseForLock: () => { const rec=state.recording;if(rec&&!rec.closing){rec.paused=true;if(rec.recorder?.state==="recording")flushClip(rec);updateRecorderUI();} },
+    nativeImport,nativeStatus,
+    pauseForLock: () => { if(window.UnscriptedNative)return;const rec=state.recording;if(rec&&!rec.closing){rec.paused=true;if(rec.recorder?.state==="recording")flushClip(rec);updateRecorderUI();} },
     navigateBack: route => {if(route.view==="entry"){if(state.entries.some(e=>e.id===route.id))openEntry(route.id);else switchView("home");}else if(route.view==="chat"){if(state.entries.some(e=>e.id===route.id))openChat(route.id);else switchView("ask");}else switchView(route.view);},
     config: getApiConfig, entries: () => state.entries, ready: () => !!state.db, recording: () => !!state.recording,
     audio: getAudio, clips: allClips, exportBackup, callAI, activeAI, toast:showToast, saveInterviewClip, transcribeInterviewAnswer, openInterviewSummary, summarySwitch, savePerspectiveClip, finishPerspective, discardPerspective, processEntry, profiles:profileData, restoreProfiles:restoreProfileData, saveInterview, savePerspective, perspectiveQuestion, openEntry, sources:chooseAskSources,

@@ -9,7 +9,7 @@
   function clean(v){clearInterval(v.ticker);clearTimeout(v.rotation);if(v.frame)cancelAnimationFrame(v.frame);v.context?.close().catch(()=>{});v.stream.getTracks().forEach(t=>t.stop());}
   function elapsed(v){return v.total+(v.recorder?.state==='recording'?Math.max(0,Date.now()-v.started):0);}
   function indicator(v){const ms=elapsed(v);$('perspectiveTimer').textContent=String(Math.floor(ms/60000)).padStart(2,'0')+':'+String(Math.floor(ms/1000)%60).padStart(2,'0');$('perspectiveRecordState').textContent=v.saving?'Saving clip…':v.paused?'Paused':'Recording';$('perspectiveIndicator').classList.toggle('paused',v.paused);$('perspectivePause').textContent=v.paused?'Resume':'Pause';$('perspectivePause').disabled=v.saving||v.stopping;}
-  function meter(v){try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return;v.context=new C();v.context.resume().catch(()=>{});const analyser=v.context.createAnalyser();analyser.fftSize=64;v.context.createMediaStreamSource(v.stream).connect(analyser);const levels=new Uint8Array(analyser.frequencyBinCount),bars=$('perspectiveMeter').querySelectorAll('i');const draw=()=>{if(voice!==v)return;analyser.getByteFrequencyData(levels);bars.forEach((bar,i)=>bar.style.height=(!v.paused?4+levels[Math.min(i+2,levels.length-1)]/255*28:4)+'px');v.frame=requestAnimationFrame(draw);};draw();}catch{}}
+  function meter(v){if(window.UnscriptedNative){const draw=()=>{if(voice!==v)return;const level=window.UnscriptedNative.meter();$('perspectiveMeter').querySelectorAll('i').forEach((bar,i)=>bar.style.height=(4+Math.min(1,level*4)*(12+i%4*5))+'px');v.frame=requestAnimationFrame(draw);};draw();return;}try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return;v.context=new C();v.context.resume().catch(()=>{});const analyser=v.context.createAnalyser();analyser.fftSize=64;v.context.createMediaStreamSource(v.stream).connect(analyser);const levels=new Uint8Array(analyser.frequencyBinCount),bars=$('perspectiveMeter').querySelectorAll('i');const draw=()=>{if(voice!==v)return;analyser.getByteFrequencyData(levels);bars.forEach((bar,i)=>bar.style.height=(!v.paused?4+levels[Math.min(i+2,levels.length-1)]/255*28:4)+'px');v.frame=requestAnimationFrame(draw);};draw();}catch{}}
   async function saveClip(blob,duration){draft.partId=await D().savePerspectiveClip(draft.entryId,draft.partId,draft,blob,duration);draft.clips++;$('perspectiveCaptured').textContent=draft.clips+' clip'+(draft.clips===1?'':'s')+' saved';}
   function end(v){clean(v);if(voice===v)voice=null;$('perspectiveIndicator').hidden=true;busy=false;buttons();if(!v.failed)tell('Audio saved. Save answer to transcribe and summarise.');}
   function startClip(v){
@@ -42,7 +42,7 @@
   async function close(force=false){
     if(saving)return;
     if(!force&&(voice||draft?.partId||draft?.unsaved||$('perspectiveAnswer').value.trim())&&!await window.UnscriptedConfirm('Discard this answer and its saved recording clips?',{title:'Discard this answer?',confirmLabel:'Discard answer',danger:true}))return;
-    if(voice){const v=voice;v.cancelled=true;v.stopping=true;if(v.recorder?.state==='recording')v.recorder.stop();while(v.saving)await new Promise(resolve=>setTimeout(resolve,20));clean(v);voice=null;}
+    if(voice){const v=voice;v.cancelled=true;v.stopping=true;v.recorder?.discard?.();if(v.recorder?.state==='recording')v.recorder.stop();while(v.saving)await new Promise(resolve=>setTimeout(resolve,20));clean(v);voice=null;}
     if(!force&&draft?.partId){try{await D().discardPerspective(draft.entryId,draft.partId)}catch(e){tell('Could not discard saved audio: '+e.message,true);return}}
     epoch++;clarification?.reset(false);draft=null;busy=false;$('perspectiveModal').hidden=true;$('perspectiveIndicator').hidden=true;$('perspectiveAnswer').value='';returnFocus?.focus({preventScroll:true});
   }
@@ -64,7 +64,7 @@
     }catch(e){tell('Could not save: '+e.message+'. Your answer is still here.',true)}finally{saving=false;busy=false;buttons()}
   };
   document.addEventListener('keydown',e=>{if($('perspectiveModal').hidden)return;if(e.key==='Escape'){e.preventDefault();close()}if(e.key==='Tab'){const nodes=[...$('perspectiveModal').querySelectorAll('button,input,textarea,summary')].filter(x=>!x.disabled&&!x.hidden&&x.getClientRects().length),first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}}});
-  document.addEventListener('visibilitychange',()=>{if(document.hidden&&voice&&!voice.paused)pause()});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden&&!window.UnscriptedNative&&voice&&!voice.paused)pause()});
   window.addEventListener('beforeunload',e=>{if(voice){e.preventDefault();e.returnValue=''}});
   window.UnscriptedPerspective={open,addToQuestion,recording:()=>!!voice};
 })();

@@ -7,3 +7,8 @@ README.md
 .gitignore
 .assetsignore
 vendor/
+
+android/
+.github/
+native-android.js
+downloads/

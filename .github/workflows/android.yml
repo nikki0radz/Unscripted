@@ -1,0 +1,37 @@
+name: Build Android app
+on:
+  push:
+    branches: [main]
+    paths: ['*.js', '*.css', 'index.html', 'android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: python3 tests/update-policy.py
+      - run: node tests/app-updates.cjs
+      - run: python3 tests/android-startup.py
+      - run: node tests/android-client.cjs
+      - run: node tests/backup-import.cjs
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - run: python3 android/build.py --sdk-tools "$ANDROID_HOME/build-tools/35.0.0" --android-jar "$ANDROID_HOME/platforms/android-35/android.jar" --out /tmp/unscripted
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unscripted-unsigned-apk
+          path: /tmp/unscripted/Unscripted-*-unsigned.apk
+          retention-days: 14
+          if-no-files-found: error
