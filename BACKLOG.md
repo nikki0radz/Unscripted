@@ -1,0 +1,50 @@
+# Product backlog
+
+## Simple, dependable backups — design proposed, implementation pending
+Requested 1 November 2026. No backup logic or encryption changes made in this task.
+
+- Default view: last successful cloud backup with date/time, clear current status,
+  automatic backup on/off, and one Back up now action. Keep last success visible
+  after a later failure. Show never-backed-up/unknown honestly; don't invent dates.
+- Remember backup capability on this trusted Android device after a one-time setup,
+  so manual and automatic uploads don't need the recovery password on every launch.
+  Design secure Android Keystore-backed protection for the required backup key;
+  don't save a plaintext password in web storage or remove encryption.
+  Restoring on another device still requires the recovery password. Investigate
+  device-lock/key invalidation, migration of existing encrypted backups and recovery
+  before choosing the implementation. Explain that forgetting the recovery password
+  still prevents recovery on a new device; saving the key locally is not a reset.
+- Hide restore, older backups (currently snapshots), recovery and storage controls
+  under Advanced backup settings. Retain version history internally.
+- Show preparing/uploading/verifying/succeeded/failed states and a short actionable
+  reason on failure with retry. Persist separate last-attempt and last-success data.
+  Only declare success after storage acknowledgement and read-back verification.
+  Verify referenced audio availability/integrity as part of a complete backup.
+- Investigate the user's reported failure using a future error message or diagnostics;
+  cause is currently unknown. Existing limits include 24 MB per clip and ~8 MB text
+  manifest; do not assume these caused this failure.
+- Present Save a backup file as a simple secondary option, including recordings,
+  transcripts, summaries and profiles, usable independently of cloud availability.
+  Local export already exists as JSON with audio; improve discoverability and
+  large-library reliability rather than add a duplicate exporter. Current format is
+  unencrypted: label that clearly until a protected format is implemented.
+- For many hours of audio: investigate streaming/chunked export to avoid a whole
+  library JSON/base64 payload in memory, available-space checks, resumable cloud
+  transfer and byte-for-byte restore tests. Confirm actual file write success before
+  marking a local backup saved. Offer Android Save/Share, including Drive when the
+  user has it installed; saving locally must not imply a successful Drive upload.
+- Automatic backups currently require the app open and backup key unlocked.
+  Show that limitation honestly. True background backup is separate native work;
+  a checked toggle must not misleadingly imply backups run after closing the app.
+
+## Preview-first design workflow
+
+- Review designs interactively in chat before packaging more APKs. No APK for each
+  visual iteration. Use the existing in-app appearance feed where its supported
+  targets suffice; it cannot currently change arbitrary markup, controls or backup
+  settings. Clearly distinguish chat mockups, live appearance previews and installed
+  functionality. Batch approved changes into a later requested test build.
+- Explore a preview gallery accessible on the phone for broader screen designs,
+  independent of installed-app updates, without granting preview content access to
+  live diary data. Any expansion of the in-app preview engine needs a deliberate,
+  bundled app update; don't silently describe it as already supported.
