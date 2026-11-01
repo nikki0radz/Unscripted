@@ -289,3 +289,7 @@ html,body{font-family:var(--reading-font);font-size:var(--reading-size)}button,i
 .library-kind select{flex:1;min-width:0;appearance:auto;margin:0;padding:10px 12px;border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line));border-radius:12px;background:var(--panel2);color:var(--accent)}
 #entryTags{gap:6px}#entryTags .tag{font-size:calc(11px * var(--text-scale,1));padding:5px 9px}
 .search-audio-range{display:block;margin-top:8px;color:var(--accent);font-size:calc(11px * var(--text-scale,1))}
+
+/* Preview recovery controls never receive downloaded appearance rules. */
+.design-preview-badge{font:inherit;font-size:11px;color:var(--accent);background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 9px;cursor:pointer;max-width:100px;line-height:1.2}
+#designPreviewSettings .settings-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}

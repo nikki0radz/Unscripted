@@ -62,6 +62,7 @@ public class MainActivity extends Activity {
    @Override public WebResourceResponse shouldInterceptRequest(WebView w,WebResourceRequest r){
     Uri uri=r.getUrl();if(!ORIGIN.equals(origin(uri)))return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));
     String path=uri.getPath();
+    if("/__native/design-preview".equals(path))return DesignPreview.response();
     try{
      if(path.startsWith("/__native/audio/")){String id=path.substring(16);if(!id.matches("[a-zA-Z0-9_-]+"))throw new IOException();return new WebResourceResponse("audio/mp4",null,new FileInputStream(new File(BackgroundService.dir(MainActivity.this),id+".m4a")));}
      if(path.equals("/")||path.equals("/index.html")){String cookie=CookieManager.getInstance().getCookie(ORIGIN);if(cookie==null||!cookie.contains("__Host-unscripted="))return null;path="/index.html";}
