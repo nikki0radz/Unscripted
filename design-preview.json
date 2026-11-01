@@ -1,6 +1,7 @@
 {
   "schema": 1,
-  "revision": "ready-1",
-  "label": "Ready for your next design changes",
+  "revision": "library-categories-1",
+  "label": "Compact category filter and soft divider",
+  "libraryLayout": "categories",
   "rules": []
 }

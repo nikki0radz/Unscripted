@@ -5,8 +5,12 @@ Settings → Display → Preview upcoming changes → Refresh preview opts into 
 preview instantly. Refresh is manual; valid previews are cached for offline use.
 Fetch failures keep the last valid design; invalid cache starts with the installed one.
 
-The initial feed has no rules: enabling it confirms connectivity without imposing a
-new design the user has not requested. For each requested design iteration, edit only
+The current feed selects the approved category-row layout with `libraryLayout: "categories"`
+(requires preview support from APK 1.0.14). This predefined local preset moves the
+existing type selector beside the topic chips, hides the redundant Search by meaning
+button and adds a fading divider below. The type selector still uses its original
+menu until the user chooses a replacement menu design. Switching preview off restores
+the original layout and keeps the selected type unchanged. For each requested design iteration, edit only
 this JSON and publish it to main/GitHub Pages. No APK build or backend deployment is
 needed for supported appearance changes. Wait for Pages deployment before asking the
 user to refresh. When approved, transfer the rules into the installed stylesheet in
@@ -25,7 +29,8 @@ Example:
 There are no remote selectors, scripts, markup, image/font URLs, positions, visibility
 changes or storage operations. Settings/recovery controls are outside the rule scope.
 Fonts use the existing app font stack; text size continues to respect accessibility
-scaling. New controls, DOM ordering or new target/property capabilities require an APK.
+scaling. New controls or new target/property capabilities require an APK. DOM ordering is
+limited to the built-in `categories` layout preset; arbitrary remote markup is rejected.
 Do not describe this as arbitrary screen layout or native-feature live updating.
 
 The Android shell fetches one fixed public HTTPS JSON URL through a dedicated endpoint;
@@ -33,6 +38,6 @@ it does not relax the WebView's external-origin rule. No diary cookies, access c
 recordings or entries are sent. Both sides cap the response at 32 KB, reject redirects,
 and time out. JSON is validated atomically before replacing existing styles.
 
-Initial preview-support APK: 1.0.13 (code 14), built with the existing signing key as
+Preview layout-support APK: 1.0.14 (code 15), built with the existing signing key as
 a one-time bootstrap while GitHub signing-secret setup remains pending. The stable
 update feed remains at 1.0.12. Future APKs use the test/promotion workflow once configured.

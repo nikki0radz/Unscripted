@@ -33,6 +33,7 @@
   function compile(data) {
     if (!data || data.schema !== 1 || typeof data.revision !== 'string' || !/^[a-zA-Z0-9._-]{1,50}$/.test(data.revision)
       || typeof data.label !== 'string' || data.label.length > 100 || !Array.isArray(data.rules) || data.rules.length > 40) throw Error('Unsupported preview');
+    if (data.libraryLayout !== undefined && data.libraryLayout !== "categories") throw Error("Unsupported library layout");
     return data.rules.map(rule => {
       if (!rule || !Object.hasOwn(targets,rule.target) || !rule.styles || typeof rule.styles !== 'object' || Array.isArray(rule.styles)) throw Error('Unsupported preview target');
       const entries = Object.entries(rule.styles);
@@ -57,7 +58,25 @@
     try { localStorage.setItem(KEY, JSON.stringify({enabled,cached})); return true; }
     catch { return false; }
   }
-  function apply() { style.textContent = enabled && cached ? compile(cached) : ''; paint(); }
+  function sizeLibraryFilter() {
+    const select = $('libraryKind');
+    if (select?.style?.setProperty) select.style.setProperty('--library-filter-chars',Math.min(28,Math.max(10,select.selectedOptions[0].textContent.length)));
+  }
+  $('libraryKind')?.addEventListener?.('change',sizeLibraryFilter);
+  function applyLibraryLayout(active) {
+    const row = $('libraryFiltersRow'), control = $('libraryKindControl'), search = $('librarySearch');
+    if (!row?.insertBefore || !control || !search) return;
+    const library = row.closest('.library-section');
+    if (active) row.insertBefore(control,row.firstChild);
+    else search.before(control);
+    library.classList.toggle('preview-library-categories',active);
+    library.querySelector('.library-preview-divider').hidden = !active;
+    sizeLibraryFilter();
+  }
+  function apply() {
+    style.textContent = enabled && cached ? compile(cached) : '';
+    applyLibraryLayout(enabled && cached?.libraryLayout === 'categories'); paint();
+  }
   function turnOff() {
     request++; controller?.abort(); busy = false; enabled = false; apply();
     status.textContent = save() ? 'Installed design restored.' : 'Installed design restored for this session. Preview preference could not be saved.';
@@ -79,7 +98,7 @@
       if (ticket !== request) return;
       cached = data; enabled = true; apply();
       const persisted = save();
-      status.textContent = (data.rules.length ? `${data.label} · ${data.revision}.` : 'Preview connected. No design changes are available yet.')
+      status.textContent = (data.rules.length || data.libraryLayout ? `${data.label} · ${data.revision}.` : 'Preview connected. No design changes are available yet.')
         + (persisted ? '' : ' Preview could not be saved for next time.');
     } catch {
       if (ticket !== request) return;
