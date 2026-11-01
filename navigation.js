@@ -10,6 +10,7 @@
   });
   window.addEventListener("unscripted-back",()=>history.back());
   const panels=[
+    ['libraryTypeModal','libraryTypeClose'],
     ['appConfirmModal','appConfirmNo'],['cancelRecordingModal','keepRecordingButton'],
     ['colourModal','colourClose'],['editorModal','closeEditor'],['choiceModal','choiceClose'],
     ['interviewDoneModal','interviewDoneClose'],['quizModal','quizClose'],

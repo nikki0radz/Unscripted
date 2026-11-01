@@ -41,3 +41,9 @@ and time out. JSON is validated atomically before replacing existing styles.
 Preview layout-support APK: 1.0.14 (code 15), built with the existing signing key as
 a one-time bootstrap while GitHub signing-secret setup remains pending. The stable
 update feed remains at 1.0.12. Future APKs use the test/promotion workflow once configured.
+
+The 1.0.15 test APK adds a local soft bottom sheet for the library type filter.
+Multiple checked types are combined, the selection is remembered on this device,
+and Everything clears the specific choices. Done, backdrop, Escape and Android
+Back close the sheet. This functionality requires the APK; it is not downloaded
+through the appearance feed. The category-row layout remains opt-in via preview.

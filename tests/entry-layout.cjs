@@ -4,7 +4,7 @@ const section=html.slice(html.indexOf('id="entryView"'),html.indexOf('id="askVie
 const order=['id="entrySummary"','id="entryParts"','id="perspectiveSummaries"','id="entryTags"','id="entryRecordings"','id="entryFooter"'];
 for(let i=1;i<order.length;i++)assert(section.indexOf(order[i])>section.indexOf(order[i-1]),order[i]+' order');
 assert(!html.includes('id="transcriptToggle"'));assert(!app.includes('$("transcriptToggle")'));
-const start=app.indexOf('  function libraryEntryMatches'),end=app.indexOf('  function markText',start);
+const start=app.indexOf('  function libraryKinds'),end=app.indexOf('  function markText',start);
 const state={libraryKind:'all'},context={state,allParts:e=>e.parts||[],sortedParts:e=>e.parts||[]};vm.createContext(context);vm.runInContext(app.slice(start,end)+'\nthis.parts=searchableParts;this.range=hitAudioRange;this.matches=libraryEntryMatches;this.partMatches=libraryPartMatches;',context);
 const entry={kind:'interview',parts:[{id:'a',type:'recording',clips:[{transcript:'Owen was here.',duration:120000},{transcript:'We played Slay the Spire.',duration:120000}]}]};
 const text=context.parts(entry)[0].text,startMatch=text.indexOf('Slay');
