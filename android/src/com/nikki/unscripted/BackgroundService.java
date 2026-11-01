@@ -13,6 +13,8 @@ import java.util.concurrent.*;
 
 public class BackgroundService extends Service {
  static BackgroundService instance;
+ static volatile double microphoneLevel;
+ final Runnable sampleLevel=new Runnable(){public void run(){double value=0;if(recorder!=null&&!paused)try{value=recorder.getMaxAmplitude()/32768.0;}catch(Exception ignored){}microphoneLevel=value;handler.postDelayed(this,50);}};
  final Handler handler=new Handler(Looper.getMainLooper());
  final ExecutorService network=Executors.newSingleThreadExecutor();
  final Set<String> running=Collections.synchronizedSet(new HashSet<>());
@@ -25,7 +27,7 @@ public class BackgroundService extends Service {
  static synchronized JSONObject savedStatus(Context c){JSONObject result=new JSONObject();try{JSONArray clips=new JSONArray();File[] files=dir(c).listFiles((d,n)->n.endsWith(".json")&&!n.equals("session.json"));if(files!=null){Arrays.sort(files,Comparator.comparing(File::getName));for(File f:files)clips.put(new JSONObject(new String(readAll(new FileInputStream(f)),"UTF-8")));}result.put("clips",clips);result.put("active",false);File session=new File(dir(c),"session.json");if(session.isFile())result.put("interrupted",new JSONObject(new String(readAll(new FileInputStream(session)),"UTF-8")));}catch(Exception e){try{result.put("error",e.getMessage());}catch(Exception ignored){}}return result;}
  static synchronized void ack(Context c,String id){new File(dir(c),id+".json").delete();new File(dir(c),id+".m4a").delete();}
  static void failJob(Context c,String id,String message){try{write(new File(jobs(c),id+".result"),new JSONObject().put("error",message).toString());new File(jobs(c),id+".request").delete();MainActivity.signal();}catch(Exception ignored){}}
- @Override public void onCreate(){super.onCreate();instance=this;AppNotifications.channels(this);wake=((PowerManager)getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"Unscripted:background");}
+ @Override public void onCreate(){super.onCreate();instance=this;handler.post(sampleLevel);AppNotifications.channels(this);wake=((PowerManager)getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"Unscripted:background");}
  void foreground(boolean microphone){PendingIntent open=PendingIntent.getActivity(this,0,new Intent(this,MainActivity.class),PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);Notification.Builder b=new Notification.Builder(this,"activity").setSmallIcon(AppNotifications.icon(this)).setContentTitle("Unscripted").setContentText(microphone?(paused?"Recording paused":"Recording · tap to return"):"Processing your diary in the background…").setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true);
   if(!microphone)b.setProgress(0,0,true);
   int types=microphone?ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE:ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;if(Build.VERSION.SDK_INT>=29)startForeground(1,b.build(),types);else startForeground(1,b.build());if(!wake.isHeld())wake.acquire();
@@ -47,7 +49,7 @@ public class BackgroundService extends Service {
    case "stop":finishClip(false);meta=null;paused=false;idle();break;
    case "cancel":JSONObject old=meta;finishClip(false);meta=null;if(old!=null){JSONArray clips=savedStatus(this).optJSONArray("clips");for(int i=0;i<clips.length();i++){JSONObject c=clips.getJSONObject(i);if(c.optString("partId").equals(old.optString("partId"))&&c.optString("token").equals(old.optString("token")))ack(this,c.getString("id"));}}idle();break;
   }
-  JSONObject s=savedStatus(this);s.put("active",meta!=null).put("paused",paused).put("totalMs",total+(recorder==null?0:SystemClock.elapsedRealtime()-clipStart)).put("error",error);if(meta!=null)s.put("metadata",meta);if(recorder!=null)try{s.put("level",recorder.getMaxAmplitude()/32768.0);}catch(Exception ignored){}return s;
+  JSONObject s=savedStatus(this);s.put("active",meta!=null).put("paused",paused).put("totalMs",total+(recorder==null?0:SystemClock.elapsedRealtime()-clipStart)).put("error",error);if(meta!=null)s.put("metadata",meta);s.put("level",microphoneLevel);return s;
  }
  void scanJobs(){File[] files=jobs(this).listFiles((d,n)->n.endsWith(".request"));if(files==null)return;for(File f:files)if(running.add(f.getName()))network.submit(()->{String id=f.getName().replace(".request","");try{JSONObject job=new JSONObject(new String(readAll(new FileInputStream(f)),"UTF-8"));JSONObject result=request(job);write(new File(jobs(this),id+".result"),result.toString());f.delete();}catch(Exception e){failJob(this,id,"Transcription request failed: "+e.getMessage()+". Your audio is saved; tap Continue transcription to retry.");}finally{running.remove(f.getName());MainActivity.signal();handler.post(()->idle());}});}
  JSONObject request(JSONObject job)throws Exception{
@@ -58,6 +60,6 @@ public class BackgroundService extends Service {
  void idle(){handler.removeCallbacks(stopIdle);if(meta==null&&running.isEmpty())handler.postDelayed(stopIdle,30000);else foreground(meta!=null);}
  final Runnable stopIdle=()->{if(meta==null&&running.isEmpty()){stopForeground(STOP_FOREGROUND_REMOVE);if(wake.isHeld())wake.release();stopSelf();}};
  @Override public void onTimeout(int startId,int fgsType){error="Android paused background processing. Reopen Unscripted to continue.";finishClip(false);meta=null;stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();}
- @Override public void onDestroy(){finishClip(false);if(wake!=null&&wake.isHeld())wake.release();if(instance==this)instance=null;network.shutdown();super.onDestroy();}
+ @Override public void onDestroy(){handler.removeCallbacks(sampleLevel);microphoneLevel=0;finishClip(false);if(wake!=null&&wake.isHeld())wake.release();if(instance==this)instance=null;network.shutdown();super.onDestroy();}
  @Override public IBinder onBind(Intent intent){return null;}
 }

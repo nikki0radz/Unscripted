@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+function setup(native){let tick,level=0,active=true,cleared=false,closed=false,disconnected=false;
+const bars=Array.from({length:5},()=>({style:{}})),element={clientHeight:36,querySelectorAll:()=>bars};
+class AudioContext{createMediaStreamSource(){return {connect(){},disconnect(){disconnected=true}}}createAnalyser(){return {fftSize:0,getFloatTimeDomainData(a){a.fill(level)},disconnect(){}}}resume(){return Promise.resolve()}close(){closed=true;return Promise.resolve()}}
+const context={window:native?{UnscriptedNative:{meter:()=>level}}:{AudioContext},document:{hidden:false},setInterval:f=>{tick=f;return 1},clearInterval:()=>cleared=true,Float32Array};vm.runInNewContext(fs.readFileSync('voice-meter.js','utf8'),context);
+const stop=context.window.UnscriptedVoiceMeter.start({element,stream:{},active:()=>active});const values=()=>bars.map(b=>parseFloat(b.style.height));
+return {tick:()=>tick(),set:n=>level=n,pause:()=>active=false,hide:()=>context.document.hidden=true,stop,values,context,cleanup:()=>({cleared,closed,disconnected})};}
+for(const native of [true,false]){const m=setup(native);m.tick();assert.deepEqual(m.values(),[4,4,4,4,4]);m.set(.01);m.tick();const quiet=m.values()[4];assert(quiet>4);m.set(.15);m.tick();assert.equal(m.values()[3],quiet,'History must move instead of repeating a fixed shape');assert(m.values()[4]>quiet,'Louder speech should create taller bars');m.set(0);for(let i=0;i<5;i++)m.tick();assert.deepEqual(m.values(),[4,4,4,4,4],'Silence settles completely');m.set(.3);m.tick();m.pause();m.tick();assert.deepEqual(m.values(),[4,4,4,4,4],'Pause clears stale signal');m.stop();assert(m.cleanup().cleared);if(!native){assert(m.cleanup().closed);assert(m.cleanup().disconnected);}}
+const hidden=setup(true);hidden.set(.3);hidden.hide();hidden.tick();assert.deepEqual(hidden.values(),[4,4,4,4,4]);
+console.log('Passed: actual native amplitude and browser RMS, loudness response, scrolling history, silence, pause, hidden state and cleanup.');

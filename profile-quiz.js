@@ -202,24 +202,11 @@ function cleanInterviewQuestion(text) {
       const seconds=Math.floor((recording.kind==="interview"?(recording.total+(recording.recorder?.state==="recording"?Date.now()-recording.started:0)):Date.now()-started)/1000);
       timer.textContent=String(Math.floor(seconds/60)).padStart(2,"0")+":"+String(seconds%60).padStart(2,"0");
     },250);
-    try {
-      if(window.UnscriptedNative){const draw=()=>{if(voice!==recording)return;const level=window.UnscriptedNative.meter();$("quizVoiceMeter").querySelectorAll("i").forEach((bar,i)=>bar.style.height=(4+Math.min(1,level*4)*(12+i%4*5))+"px");recording.meterFrame=requestAnimationFrame(draw);};draw();return;}
-      const AudioContext=window.AudioContext||window.webkitAudioContext;
-      if(!AudioContext)return;
-      const context=new AudioContext(),source=context.createMediaStreamSource(recording.stream),analyser=context.createAnalyser();
-      analyser.fftSize=64;source.connect(analyser);
-      recording.audioContext=context;context.resume().catch(()=>{});
-      const levels=new Uint8Array(analyser.frequencyBinCount),bars=$("quizVoiceMeter").querySelectorAll("i");
-      function draw(){
-        if(voice!==recording)return;
-        analyser.getByteFrequencyData(levels);
-        bars.forEach((bar,index)=>{const value=levels[Math.min(levels.length-1,index+2)]/255;bar.style.height=(4+value*28)+"px";});
-        recording.meterFrame=requestAnimationFrame(draw);
-      }
-      draw();
-    } catch (_) { /* Timer and captured-audio status remain available without Web Audio. */ }
+    recording.stopMeter=window.UnscriptedVoiceMeter?.start({element:$("quizVoiceMeter"),stream:recording.stream,active:()=>voice===recording&&!recording.paused&&!recording.saving&&!recording.stopping&&recording.recorder?.state==="recording"});
   }
+
   function stopVoiceIndicator(recording) {
+    recording.stopMeter?.();
     clearInterval(recording.indicatorTimer);
     if(recording.meterFrame)cancelAnimationFrame(recording.meterFrame);
     recording.audioContext?.close().catch(()=>{});

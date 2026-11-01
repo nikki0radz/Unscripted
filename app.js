@@ -220,6 +220,7 @@
     }, "What would you like to add?");
   }
   function supportedMime() { if (!window.MediaRecorder) return ""; return ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg;codecs=opus"].find((type) => MediaRecorder.isTypeSupported(type)) || ""; }
+  function startRecordingMeter(rec){rec.stopMeter?.();rec.stopMeter=window.UnscriptedVoiceMeter?.start({element:document.getElementById("recordingVoiceMeter"),stream:rec.stream,active:()=>state.recording===rec&&!rec.paused&&!rec.closing&&!rec.saving&&rec.recorder?.state==="recording"});}
   async function startRecording(entryId) {
     if (state.recording) return;
     if (window.UnscriptedPerspective?.recording() || window.UnscriptedQuiz?.recording()) {showToast("Finish your quiz voice answer first.");return;}
@@ -236,10 +237,10 @@
       state.recording = recording;showFinishConfirmation(false);
       $("recordTarget").textContent = entry.parts.length === 1 ? "A new entry" : "Adding to “" + entry.title + "”";
       $("recorderSheet").hidden = false;
-      $("recordTimer").textContent="00:00"; startClip(recording); updateRecorderUI();
+      $("recordTimer").textContent="00:00"; startClip(recording); updateRecorderUI(); startRecordingMeter(recording);
       if (!recording.closing) recording.ticker = setInterval(() => updateRecorderUI(), 500);
     } catch (error) {
-      stream.getTracks().forEach((track) => track.stop());
+      state.recording?.stopMeter?.();stream.getTracks().forEach((track) => track.stop());
       state.recording = null; $("recorderSheet").hidden = true;
       showToast("Could not start recording: " + error.message);
     }
@@ -344,7 +345,7 @@
   }
   async function finishRecordingSession(rec) {
     if (rec !== state.recording || rec.finishing) return;
-    rec.finishing=true;
+    rec.finishing=true;rec.stopMeter?.();
     clearTimeout(rec.rotation); clearInterval(rec.ticker);
     rec.stream.getTracks().forEach((track) => track.stop());
     if(rec.cancelled) {
@@ -921,7 +922,7 @@
     if(s.active&&s.metadata&&!s.metadata.simple&&!state.recording){
       const m=s.metadata;state.recording={entryId:m.entryId,partId:m.partId,native:true,stream:{getTracks:()=>[]},recorder:{state:"recording"},paused:!!s.paused,totalMs:s.totalMs||0,clipStarted:0};
       showFinishConfirmation(false);$("recordTarget").textContent="Your Android recording";$("recorderSheet").hidden=false;
-      state.recording.ticker=setInterval(updateRecorderUI,500);
+      state.recording.ticker=setInterval(updateRecorderUI,500);startRecordingMeter(state.recording);
     }
     if(state.recording?.native){state.recording.paused=!!s.paused;state.recording.totalMs=s.totalMs||state.recording.totalMs;updateRecorderUI();if(s.error&&!s.active&&!state.recording.closing){const rec=state.recording;rec.closing=true;showToast(s.error);finishRecordingSession(rec);}}
   }

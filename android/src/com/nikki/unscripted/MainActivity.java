@@ -95,6 +95,7 @@ public class MainActivity extends Activity {
  @Override public void onBackPressed(){web.evaluateJavascript("window.UnscriptedDiary?.recording()?window.UnscriptedDiary.toast('Save or pause your recording before leaving.'):history.back()",null);}
  class Bridge {
   @JavascriptInterface public boolean available(){return true;}
+  @JavascriptInterface public double microphoneLevel(){return BackgroundService.microphoneLevel;}
   @JavascriptInterface public String playbackStatus(){return PlaybackService.snapshot;}
   @JavascriptInterface public String playbackWrite(String token,int index,String data,boolean append){
    if(!PlaybackService.safe(token)||index<0||index>9999||data.length()>400000)return "Invalid audio";

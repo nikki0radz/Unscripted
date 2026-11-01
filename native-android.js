@@ -38,10 +38,10 @@
     ackTranscript:id=>bridge.forget('transcribe-'+id),
     transcriptionFinished:(entryId,revision)=>bridge.transcriptionFinished?.(entryId,revision),
     exportBackup:(text,name)=>bridge.exportBackup(text,name),
-    meter:()=>lastStatus.level||0
+    meter:()=>bridge.microphoneLevel?.()??lastStatus.level??0
   };
   window.addEventListener('unscripted-native',()=>{sync();});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync();});
   setInterval(sync,750);
-  document.addEventListener('DOMContentLoaded',()=>{fetch('/session/status',{credentials:'same-origin',cache:'no-store'}).catch(()=>{});const hint=document.getElementById('recordingBackgroundHint');if(hint)hint.textContent='Recording continues when you leave the app or lock your screen. Return using the Unscripted notification.';const install=document.getElementById('installAppButton');if(install){install.disabled=true;install.textContent='Android app · 1.0.10';}document.querySelectorAll('#installAppStatus').forEach(x=>x.textContent='Background recording and transcription are available in this app.');});
+  document.addEventListener('DOMContentLoaded',()=>{fetch('/session/status',{credentials:'same-origin',cache:'no-store'}).catch(()=>{});const hint=document.getElementById('recordingBackgroundHint');if(hint)hint.textContent='Recording continues when you leave the app or lock your screen. Return using the Unscripted notification.';const install=document.getElementById('installAppButton');if(install){install.disabled=true;install.textContent='Android app · 1.0.11';}document.querySelectorAll('#installAppStatus').forEach(x=>x.textContent='Background recording and transcription are available in this app.');});
 })();

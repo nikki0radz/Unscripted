@@ -1,9 +1,9 @@
 {
   "packageName": "com.nikki.unscripted",
-  "versionCode": 11,
-  "versionName": "1.0.10",
-  "downloadUrl": "https://nikki0radz.github.io/Unscripted/downloads/Unscripted-1.0.10.apk",
-  "sha256": "63555e56f84058d6127c43e36e0f071c7cb65c648c72a7a246413e7a350ba6b1",
-  "sizeBytes": 1559141,
-  "notes": "Matching handwritten U notification icon and saved AI correction notes beneath summaries."
+  "versionCode": 12,
+  "versionName": "1.0.11",
+  "downloadUrl": "https://nikki0radz.github.io/Unscripted/downloads/Unscripted-1.0.11.apk",
+  "sha256": "c65e23e725f7082c846b351b48d7521f935d06b61873abfc32a04d010902f5f9",
+  "sizeBytes": 1559208,
+  "notes": "Voice-reactive waveforms throughout recording, perspectives and interviews."
 }

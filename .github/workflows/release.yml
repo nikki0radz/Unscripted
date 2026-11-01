@@ -24,22 +24,22 @@ jobs:
           import hashlib,json,pathlib,os
           feed=json.loads(pathlib.Path('app-update.json').read_text())
           version=feed['versionName']
-          assert version == '1.0.10', 'Review this release workflow before publishing a new version'
+          assert version == '1.0.11', 'Review this release workflow before publishing a new version'
           apk=pathlib.Path('downloads')/f'Unscripted-{version}.apk'
           data=apk.read_bytes()
           assert len(data)==feed['sizeBytes'], 'APK size mismatch'
           assert hashlib.sha256(data).hexdigest()==feed['sha256'], 'APK checksum mismatch'
-          pathlib.Path('release-notes.md').write_text('''Unscripted 1.0.10
+          pathlib.Path('release-notes.md').write_text('''Unscripted 1.0.11
 
-          - Notification icon traced from the actual handwritten U logo, including the underline.
-          - Did I understand you wrong? correction note beneath each entry summary.
-          - Corrections persist for future summary refreshes without changing original audio or transcripts.
+          - Voice-reactive waveforms across the main recorder, Another perspective, added thoughts and interview/quiz answers.
+          - Scrolling microphone-level history instead of looping animations or repeated bar patterns.
+          - Faster Android level sampling, with silence and pause returning the bars to baseline.
 
           Install this APK over the existing Unscripted app to update.
           ''')
           PY
-          if gh release view v1.0.10 >/dev/null 2>&1; then
-            echo 'Release v1.0.10 already exists; leaving it unchanged.'
+          if gh release view v1.0.11 >/dev/null 2>&1; then
+            echo 'Release v1.0.11 already exists; leaving it unchanged.'
           else
-            gh release create v1.0.10 downloads/Unscripted-1.0.10.apk app-update.json --target "$GITHUB_SHA" --title "Unscripted 1.0.10" --notes-file release-notes.md --latest
+            gh release create v1.0.11 downloads/Unscripted-1.0.11.apk app-update.json --target "$GITHUB_SHA" --title "Unscripted 1.0.11" --notes-file release-notes.md --latest
           fi

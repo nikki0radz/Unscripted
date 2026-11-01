@@ -1,4 +1,4 @@
-# Unscripted for Android 1.0.10
+# Unscripted for Android 1.0.11
 
 Package: `com.nikki.unscripted`. Android 8 (API 26) or newer; target API 35.
 The shell bundles the diary frontend and connects to the existing private Unscripted backend. Sign in with the existing diary access code. The current WebView does not guarantee passkey support; access-code login remains available.
@@ -6,7 +6,7 @@ The shell bundles the diary frontend and connects to the existing private Unscri
 ## Install and move your diary
 
 1. In the existing browser/PWA diary, use Settings → Export backup. Keep the original diary installed until the transfer is checked.
-2. Install the signed `downloads/Unscripted-1.0.10.apk`. Android may ask permission to install apps from the browser/download manager.
+2. Install the signed `downloads/Unscripted-1.0.11.apk`. Android may ask permission to install apps from the browser/download manager.
 3. Open Unscripted, sign in with the existing access code and allow microphone access. Allow notifications to see ongoing recording/processing status.
 4. Settings → Import backup; select the exported JSON. Verify entry counts, transcripts and playback of several original recordings. Encrypted cloud restore is also available with the existing recovery password.
 5. Record a disposable 30-second entry, lock the phone, speak for another 30 seconds, reopen and save. Check the whole audio and transcription before relying on background capture for a long entry.
@@ -92,3 +92,9 @@ The notification vector is a monochrome silhouette traced directly from launcher
 A collapsible “Did I understand you wrong?” section beneath the entry summary accepts up to 2,000 characters of owner clarification. Update summary saves the note on the entry and explicitly permits refreshing a manually edited summary. The existing organize endpoint receives the clarification with its source material, including on later refreshes and reflection/interview summaries. Saved transcripts/audio are unchanged; existing summaries remain until a successful replacement, and failed requests keep the correction for retry. Notes are per entry, not global name substitutions, and travel with the existing entry backup data. No new backend route or deployment is required.
 
 Tests cover correction persistence, request contents, no retranscription, unchanged originals, all 100 source parts retained, failures, busy guards, native playback, transcription notifications and backup import. The compiled notification silhouette was visually checked; phone notification rendering and AI wording still require use on device.
+
+## 1.0.11 microphone-reactive waveforms
+
+All live recording meters share a scrolling amplitude-history renderer. Browser meters measure RMS from the existing microphone stream; Android samples MediaRecorder peak amplitude every 50 ms on its service handler, exposes a cached volatile value through the bridge and avoids consuming amplitude during unrelated status calls. Main recordings, resumed native sessions, Another perspective, added thoughts and interview/quiz voice answers use the same renderer. No synthetic oscillation, frequency-bin decoration or repeated four-bar shape remains. Silence settles to baseline, pause/stop resets the bars, and meter cleanup disconnects analysis without stopping the recording stream.
+
+Automated checks cover native and browser samples, louder speech, history movement, silence, pause, hidden state and cleanup, plus recording/perspective/quiz saving regressions. Android build/signature checks pass; physical microphone response requires a phone check.
