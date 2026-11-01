@@ -1,9 +1,9 @@
 {
   "packageName": "com.nikki.unscripted",
-  "versionCode": 12,
-  "versionName": "1.0.11",
-  "downloadUrl": "https://nikki0radz.github.io/Unscripted/downloads/Unscripted-1.0.11.apk",
-  "sha256": "c65e23e725f7082c846b351b48d7521f935d06b61873abfc32a04d010902f5f9",
-  "sizeBytes": 1559208,
-  "notes": "Voice-reactive waveforms throughout recording, perspectives and interviews."
+  "versionCode": 13,
+  "versionName": "1.0.12",
+  "downloadUrl": "https://nikki0radz.github.io/Unscripted/downloads/Unscripted-1.0.12.apk",
+  "sha256": "62511f2bfd8b45c1bd925b53ee718618fe216e7916caf77e7a937b16a3747f29",
+  "sizeBytes": 1563304,
+  "notes": "Summaries-first entries, grouped recordings/transcripts, library type filters and free audio-section search links."
 }

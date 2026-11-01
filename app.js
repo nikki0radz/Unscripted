@@ -6,7 +6,7 @@
   const DB_VERSION = 1;
   const CLIP_MS = 120000; // independently playable, auto-saved two-minute clips
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(36).slice(2));
-  const state = { db: null, entries: [], view: "home", selected: null, topic: "All", recording: null, urls: [], processing: new Set(), pauseTranscription: new Set(), editorCallback: null, toastTimeout: null, openTranscript: false };
+  const state = { db: null, entries: [], view: "home", selected: null, topic: "All", libraryKind: "all", recording: null, urls: [], processing: new Set(), pauseTranscription: new Set(), editorCallback: null, toastTimeout: null, openTranscript: false };
   const fmtDate = (iso, full = false) => new Date(iso).toLocaleString(undefined, full ? { weekday: "long", year: "numeric", month: "long", day: "numeric" } : { day: "numeric", month: "short", year: "numeric" });
   const fmtTime = (iso) => new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   const fmtDuration = (ms) => { const m = Math.floor((ms || 0) / 60000); const s = Math.floor(((ms || 0) % 60000) / 1000); return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0"); };
@@ -57,12 +57,14 @@
     const filters = $("topicFilters"); filters.replaceChildren();
     for (const topic of ["All", ...tags]) {
       const chip = make("button", "filter-chip" + (state.topic === topic ? " selected" : ""), topic);
-      chip.type = "button"; chip.onclick = () => { state.topic = topic; renderHome(); }; filters.append(chip);
+      chip.type = "button"; chip.onclick = () => { state.topic = topic; searchRevision++;semanticResults=null;renderHome(); }; filters.append(chip);
     }
     const query = $("searchInput").value.trim();
     if(query){renderSearch(query);return;}
     if($("searchStatus"))$("searchStatus").textContent="";
-    const selected = state.entries.filter((e) => e.kind!=="diaryChat" && (state.topic === "All" || (e.tags || []).includes(state.topic)) && (!query || searchMatches(e, query)));
+    if(["questions","perspectives"].includes(state.libraryKind)){renderQuestionLibrary();return;}
+    const selected = state.entries.filter((e) => libraryEntryMatches(e) && (state.topic === "All" || (e.tags || []).includes(state.topic)) && (!query || searchMatches(e, query)));
+    $("entryCount").textContent=selected.length+(selected.length===1?" entry":" entries");
     if (!selected.length) {
       const empty = make("div", "empty-state"); empty.append(make("strong", "", query || state.topic !== "All" ? "Nothing found, yet." : "Your thoughts will live here."), make("span", "", query || state.topic !== "All" ? "Try another search or category." : "Start recording and make this space your own.")); list.append(empty); return;
     }
@@ -76,7 +78,7 @@
     }
   }
   function revokeUrls() { state.urls.forEach((url) => URL.revokeObjectURL(url)); state.urls = []; }
-  function openEntry(id) { state.searchTarget=null; state.selected = id; state.openTranscript = false; $("transcriptArea").hidden = true; $("transcriptToggle").setAttribute("aria-expanded", "false"); switchView("entry"); }
+  function openEntry(id) { state.searchTarget=null; state.selected = id; state.openTranscript = false; switchView("entry"); }
   function interviewQuestionText(entry,part){const question=part.question||entry.interview?.answers?.find(x=>x.id===part.id)?.question||part.text?.match(/(?:Interview question|Question(?: \d+)?):\s*([^\n]+)/i)?.[1]||"Interview question";return question.replace(/(^|\n)([AB])\s*[.):：-]\s*(?:\2\s*[.):：-]\s*)+/gi,"$1$2. ");}
   function renderEntry() {
     const entry = currentEntry(); if (!entry) { switchView("home"); return; }
@@ -88,36 +90,34 @@
     $("entryTitle").textContent = entry.title || "Untitled thought";
     $("interviewEntryStatus").hidden=entry.kind!=="interview";
     $("interviewEntryStatus").textContent=entry.kind==="interview"?"✦ Interview · "+(entry.interview?.goal||"Explore your thoughts"):"";
-    const summarySection=$("entrySummary").closest("section");
-    if(entry.kind==="interview")$("entryParts").previousElementSibling.before(summarySection);
-    else $("entryStatus").after(summarySection);
+
     let resume=$("continueSavedInterview");if(!resume){resume=make("button","button-soft","✦ Continue interview");resume.id="continueSavedInterview";resume.type="button";$("interviewEntryStatus").after(resume);}
     resume.hidden=entry.kind!=="interview";resume.onclick=()=>window.UnscriptedQuiz?.continueSaved(entry.id);
     const clips = allClips(entry);
     $("entryDuration").textContent = `${sortedParts(entry).filter((p) => p.type === "recording").length} recording(s) · ${audioTime(totalTime(entry))} of audio · ${sortedParts(entry).filter((p) => p.type === "note" && !p.reflectionAnswer).length} written note(s) · ${sortedParts(entry).filter(p=>p.reflectionAnswer).length} reflection(s)`;
     if(entry.kind==="interview")$("entryDuration").textContent=sortedParts(entry).filter(p=>p.interviewQuestion).length+" questions"+(clips.length?" · "+audioTime(totalTime(entry))+" of audio":"");
     const container = $("entryParts"); container.replaceChildren();
-    sortedParts(entry).filter(part => !part.reflectionAnswer).forEach((part, index) => {
+    sortedParts(entry).filter(part => !part.reflectionAnswer && part.type!=="recording").forEach((part, index) => {
       const box = make("div", "part-card"); const head = make("div", "part-head");
       head.append(make("strong", "", part.type === "note" ? (part.interviewQuestion ? "✦ Interview question " : "✎ Written addition ") + (index + 1) : ""), make("small", "", fmtDate(part.createdAt) + " · " + fmtTime(part.createdAt)));
       box.append(head);
       if(part.interviewQuestion){
         const additions=sortedParts(entry).filter(p=>p.parentQuestionId===part.id);
         const card=make("details","interview-question-card"),key=entry.id+":"+part.id;
-        card.open=expandedInterviewQuestions.has(key);card.ontoggle=()=>{if(card.open)expandedInterviewQuestions.add(key);else expandedInterviewQuestions.delete(key);};
+        card.dataset.summaryPart=part.id;card.open=expandedInterviewQuestions.has(key);card.ontoggle=()=>{if(card.open)expandedInterviewQuestions.add(key);else expandedInterviewQuestions.delete(key);};
         const heading=make("summary","interview-card-heading");
         heading.append(make("h3","interview-card-question",interviewQuestionText(entry,part)),make("p","interview-answer-preview",part.summary||part.answer||"Audio saved · transcript pending"));
         const clips=[part,...additions].flatMap(p=>p.clips||[]);
-        heading.append(make("span","interview-card-meta",(clips.length?clips.length+" audio clip"+(clips.length===1?"":"s"):"Written answer")+(additions.length?" · "+additions.length+" added thought"+(additions.length===1?"":"s"):"")+" · Expand ⌄"));
+        heading.append(make("span","interview-card-meta",(clips.length?clips.length+" audio clip"+(clips.length===1?"":"s"):"Written answer")+(additions.length?" · "+additions.length+" added thought"+(additions.length===1?"":"s"):"")+" · View answer"));
         card.append(heading);
         const content=make("div","interview-card-content");
         function answerSection(item,extra=false){
           const section=make("section",extra?"interview-added-thought":"interview-original-answer");
           if(extra)section.append(make("div","tiny","Added thought · "+fmtDate(item.createdAt)));
-          if(item.clips?.length)section.append(window.UnscriptedRecordingPlayer.create(item.clips,getAudio,extra?"added thought":"interview answer",{entryId:entry.id,title:entry.title}));
+
           if((item.clips||[]).some(c=>!c.transcript&&!c.transcriptionComplete)){const retry=make("button","text-action","⚠ Continue transcription");retry.onclick=()=>processEntry(entry.id);section.append(retry);}
           section.append(summarySwitch(item.id,item.summary,item.bulletPoints,()=>processEntry(entry.id)));
-          const transcript=make("details","reflection-transcript");transcript.append(make("summary","","Full transcript"),make("p","reflection-answer-text",item.answer||"Audio saved; transcript pending."));section.append(transcript);content.append(section);
+          content.append(section);
         }
         answerSection(part);for(const item of additions)answerSection(item,true);
         const add=make("button","interview-add-thought","＋ Add a thought");add.type="button";add.onclick=()=>window.UnscriptedPerspective?.addToQuestion(entry.id,part.id);content.append(add);card.append(content);container.append(card);return;
@@ -156,16 +156,14 @@
     const tags = $("entryTags"); tags.replaceChildren();
     if (!(entry.tags || []).length) tags.append(make("span", "muted", "No topics yet."));
     else (entry.tags || []).forEach((tag) => tags.append(make("span", "tag", tag)));
-    $("transcriptArrow").textContent = state.openTranscript ? "⌃" : "⌄";
-    $("transcriptArea").hidden = !state.openTranscript;
-    if (state.openTranscript) renderTranscript(entry);
+    renderRecordingArchive(entry);
     if(state.searchTarget)revealSearchTarget();
   }
   function renderTranscriptionProgress(entry) {
     let panel = $("transcriptionProgress");
     if (!panel) {
       panel = make("section"); panel.id = "transcriptionProgress";
-      $("entryParts").after(panel);
+      $("entryStatus").after(panel);
     }
     panel.replaceChildren();
     const clips = allParts(entry).filter(p => p.type === "recording" || p.reflectionAnswer || p.interviewQuestion).flatMap(p => p.clips || []);
@@ -195,13 +193,26 @@
     if(busy){const spinner=make("span","ui-spinner transcription-spinner");spinner.setAttribute("aria-hidden","true");details.append(spinner);}
     panel.append(details, button);
   }
-  function renderTranscript(entry) {
-    const target = $("transcriptArea"); target.replaceChildren();
-    for (const part of sortedParts(entry).filter(p=>!p.reflectionAnswer)) {
-      const div = make("div", "transcript-part"); div.append(make("div", "transcript-head", (part.reflectionAnswer ? "Reflection · question & answer" : part.type === "note" ? "Written note" : "Voice recording") + " · " + fmtDate(part.createdAt) + " at " + fmtTime(part.createdAt)));
-      const body = part.type === "note" ? part.text : (part.clips || []).map((c) => c.transcript || (c.transcriptionComplete ? "[No speech detected]" : "[Audio waiting for transcription]")).join("\n\n");
-      div.append(make("p", "", body || "No transcript yet.")); target.append(div);
+  const openRecordingTranscripts=new Set();
+  function renderRecordingArchive(entry){
+    const target=$("entryRecordings");target.replaceChildren();let recordingIndex=0,perspectiveIndex=0,questionIndex=0;
+    for(const {part,text} of searchableParts(entry)){
+      const hasAudio=part.clips?.length;
+
+      const label=part.interviewQuestion?"Interview answer "+(++questionIndex):part.parentQuestionId?"Added thought":part.reflectionAnswer?"Another perspective "+(++perspectiveIndex):part.type==="note"?"Written thought":(++recordingIndex===1?"First recording":"Recording "+recordingIndex);
+      const card=make("section","recording-archive-card");card.dataset.partId=part.id;
+      card.append(make("h3","recording-label",label));
+      if(part.question)card.append(make("p","recording-question",part.question));
+      if(hasAudio)card.append(window.UnscriptedRecordingPlayer.create(part.clips,getAudio,label,{entryId:entry.id,title:entry.title}));
+      const date=make("time","voice-note-date",fmtDate(part.createdAt)+" · "+fmtTime(part.createdAt));date.dateTime=part.createdAt;card.append(date);
+      const details=make("details","recording-transcript"),key=entry.id+":"+part.id;
+      details.open=openRecordingTranscripts.has(key);details.ontoggle=()=>{if(details.open)openRecordingTranscripts.add(key);else openRecordingTranscripts.delete(key);};
+      details.append(make("summary","",hasAudio?"View full transcript":"View written answer"));
+      const body=make("p","transcript-body",text||"Transcript not ready yet.");details.append(body);
+      if(part.reflectionAnswer||part.interviewQuestion){const edit=make("button","text-action","Edit transcript");edit.type="button";edit.onclick=()=>openEditor("Edit answer transcript",part.answer||"",async value=>{if(!value.trim())return;const fresh=await transaction("entries","readonly",store=>store.get(entry.id));const saved=fresh?.parts.find(p=>p.id===part.id);if(!saved)throw Error("This answer no longer exists.");saved.answer=value;saved.answerEdited=true;saved.text=(part.interviewQuestion?"Interview question: ":"Reflection question: ")+part.question+"\nYour answer: "+value;saved.summary="";saved.bulletPoints=[];await saveEntry(fresh);await refreshEntries();renderEntry();processEntry(entry.id);});details.append(edit);}
+      card.append(details);if((part.clips||[]).some(c=>!c.transcript&&!c.transcriptionComplete))card.append(make("p","tiny","Some audio is awaiting transcription."));target.append(card);
     }
+    if(!target.children.length)target.append(make("p","tiny","No recordings yet."));
   }
   function openEditor(title, value, callback, label = "Your text") { state.editorCallback = callback; $("editorTitle").textContent = title; $("editorLabel").textContent = label; $("editorInput").value = value; $("editorModal").hidden = false; $("editorInput").focus(); }
   function closeEditor() { $("editorModal").hidden = true; state.editorCallback = null; }
@@ -665,13 +676,18 @@
     if(entry){const b=make("button","button-soft","Apply to this entry ↻");b.type="button";b.onclick=async()=>{if(state.processing.has(entry.id)){showToast("Wait for transcription to finish first.");return;}if(!await persist())return;const fresh=await transaction("entries","readonly",s=>s.get(entry.id));if(!fresh)return;fresh.summaryEdited=false;for(const part of fresh.parts||[])if(part.reflectionAnswer||part.interviewQuestion){part.summary="";part.bulletPoints=[];}await saveEntry(fresh);await refreshEntries();processEntry(entry.id);};wrap.append(b,make("p","tiny","Apply when you want a new version. Your current summary stays until then."));}
     return wrap;
   }
-  function renderToneControls(entry){let panel=$("entryToneControls");if(!panel){panel=make("details","entry-block tone-panel");panel.id="entryToneControls";$("deleteEntryButton").before(panel);}const expanded=panel.open;panel.replaceChildren(make("summary","","✦ Summary style"),toneControls(entry));panel.open=expanded;}
+  function renderToneControls(entry){let panel=$("entryToneControls");if(!panel){panel=make("details","tone-panel");panel.id="entryToneControls";$("deleteEntryButton").before(panel);}const expanded=panel.open;panel.replaceChildren(make("summary","","✦ Summary style"),toneControls(entry));panel.open=expanded;}
   let searchRevision=0,semanticResults=null,activeChatId=null,chatBusy=false;
-  function searchableParts(entry){return sortedParts(entry).map(part=>({part,text:part.type==="note"?((part.interviewQuestion||part.reflectionAnswer)?(part.answer||part.text?.split(/Your answer:\s*/i)[1]||""):(part.text||"")):(part.clips||[]).map(c=>c.transcript||"").join("\n\n")}));}
+  function libraryEntryMatches(entry){return entry.kind!=="diaryChat"&&(state.libraryKind==="diary"?entry.kind!=="interview":state.libraryKind==="interviews"||state.libraryKind==="questions"?entry.kind==="interview":true);}
+  function libraryPartMatches(part){return state.libraryKind==="questions"?!!part.interviewQuestion:state.libraryKind==="perspectives"?!!part.reflectionAnswer&&!part.parentQuestionId:true;}
+  function searchableParts(entry){return sortedParts(entry).map(part=>({part,text:(part.interviewQuestion||part.reflectionAnswer)?(part.question?part.question+"\n\n":"")+(part.answer||part.text?.split(/Your answer:\s*/i)[1]||""):part.type==="note"?(part.text||""):(part.clips||[]).map(c=>c.transcript||"").join("\n\n")}));}
+  function renderQuestionLibrary(){const list=$("entriesList");let count=0;for(const entry of state.entries.filter(e=>libraryEntryMatches(e)&&(state.topic==="All"||(e.tags||[]).includes(state.topic))))for(const {part} of searchableParts(entry).filter(x=>libraryPartMatches(x.part))){const card=make("button","entry-card");card.type="button";card.append(make("small","",fmtDate(part.createdAt)+" · "+entry.title),make("h3","",part.question||"Question"),make("p","",part.summary||part.answer||"Answer pending"));card.onclick=()=>{openEntry(entry.id);const node=[...document.querySelectorAll('[data-summary-part]')].find(x=>x.dataset.summaryPart===part.id);if(node?.tagName==="DETAILS")node.open=true;node?.scrollIntoView({behavior:"smooth",block:"start"});};list.append(card);count++;}$("entryCount").textContent=count+" questions";if(!count)list.append(make("p","tiny","No saved questions in this category yet."));}
+  function hitAudioRange(entry,hit){const part=allParts(entry).find(p=>p.id===hit.partId);if(!part?.clips?.length||part.answerEdited)return null;const joined=part.clips.map(c=>c.transcript||"").join("\n\n"),base=hit.text.indexOf(joined);if(!joined||base<0||hit.start<base)return null;let offset=base,time=0;for(const clip of part.clips){const end=offset+(clip.transcript||"").length,duration=Number(clip.duration);if(!(duration>0))return null;if(hit.start>=offset&&hit.start<end&&hit.end<=end)return {start:time,end:time+duration};offset=end+2;time+=duration;}return null;}
+
   function markText(el,text,ranges){let at=0;for(const r of ranges.sort((a,b)=>a.start-b.start)){if(r.start<at)continue;el.append(document.createTextNode(text.slice(at,r.start)));el.append(make("mark","",text.slice(r.start,r.end)));at=r.end;}el.append(document.createTextNode(text.slice(at)));}
   function literalHits(query){
     const hits=[],words=query.toLocaleLowerCase().match(/[\p{L}\p{N}']+/gu)||[];
-    for(const entry of state.entries.filter(e=>e.kind!=="diaryChat"&&(state.topic==="All"||(e.tags||[]).includes(state.topic))))for(const {part,text} of searchableParts(entry)){
+    for(const entry of state.entries.filter(e=>libraryEntryMatches(e)&&(state.topic==="All"||(e.tags||[]).includes(state.topic))))for(const {part,text} of searchableParts(entry).filter(x=>libraryPartMatches(x.part))){
       const lower=text.toLocaleLowerCase();let pos=0,found=false;
       while(query&&((pos=lower.indexOf(query.toLocaleLowerCase(),pos))>=0)){hits.push({entryId:entry.id,partId:part.id,start:pos,end:pos+query.length,text,score:100});pos+=Math.max(1,query.length);found=true;}
       if(!found&&words.length>1){let offset=0;for(const sentence of text.split(/(?<=[.!?\n])\s+/)){const ranges=[];for(const word of new Set(words)){let at=sentence.toLocaleLowerCase().indexOf(word);if(at>=0)ranges.push({start:offset+at,end:offset+at+word.length});}if(ranges.length>=Math.max(2,Math.ceil(new Set(words).size*.5)))hits.push({entryId:entry.id,partId:part.id,start:ranges[0].start,end:ranges[0].end,text,ranges,score:ranges.length});offset+=sentence.length;while(/\s/.test(text[offset]||"")&&offset<text.length)offset++;}}
@@ -679,13 +695,11 @@
   }
   function renderSearch(query){const target=$("entriesList");target.replaceChildren();const hits=semanticResults?.query===query?semanticResults.hits:literalHits(query);$("searchStatus").textContent=hits.length+" matches";
     if(!hits.length){target.append(make("p","tiny","No transcript matches. Try fewer words or Search by meaning."));return;}
-    for(const hit of hits){const entry=state.entries.find(e=>e.id===hit.entryId);if(!entry)continue;const b=make("button","entry-card search-hit");b.type="button";b.append(make("small","",fmtDate(entry.createdAt)+" · "+entry.title));const snippet=make("div","search-snippet"),start=Math.max(0,hit.start-25),end=Math.min(hit.text.length,hit.end+130),text=hit.text.slice(start,end);const ranges=(hit.ranges||[{start:hit.start,end:hit.end}]).filter(r=>r.end>start&&r.start<end).map(r=>({start:Math.max(0,r.start-start),end:Math.min(text.length,r.end-start)}));markText(snippet,text,ranges);b.append(snippet);b.onclick=()=>{openEntry(entry.id);state.searchTarget=hit;state.openTranscript=true;renderEntry();};target.append(b);}
+    for(const hit of hits){const entry=state.entries.find(e=>e.id===hit.entryId);if(!entry)continue;const b=make("button","entry-card search-hit");b.type="button";b.append(make("small","",fmtDate(entry.createdAt)+" · "+entry.title));const snippet=make("div","search-snippet"),start=Math.max(0,hit.start-25),end=Math.min(hit.text.length,hit.end+130),text=hit.text.slice(start,end);const ranges=(hit.ranges||[{start:hit.start,end:hit.end}]).filter(r=>r.end>start&&r.start<end).map(r=>({start:Math.max(0,r.start-start),end:Math.min(text.length,r.end-start)}));markText(snippet,text,ranges);b.append(snippet);const range=hitAudioRange(entry,hit);if(range)b.append(make("span","search-audio-range","Audio section "+window.UnscriptedRecordingPlayer.clock(range.start/1000)+"–"+window.UnscriptedRecordingPlayer.clock(range.end/1000)));b.onclick=()=>{openEntry(entry.id);state.searchTarget=hit;state.openTranscript=true;renderEntry();};target.append(b);}
   }
-  function revealSearchTarget(){const hit=state.searchTarget;if(!hit)return;const entry=currentEntry(),part=allParts(entry).find(p=>p.id===hit.partId);if(!part)return;$("transcriptArea").hidden=false;$("transcriptToggle").setAttribute("aria-expanded","true");const target=$("transcriptArea");target.replaceChildren();let focus;
-    for(const item of searchableParts(entry)){const section=make("section","transcript-part");section.append(make("div","transcript-head",fmtDate(item.part.createdAt)+" · "+fmtTime(item.part.createdAt)));const body=make("p");if(item.part.id===part.id){markText(body,item.text,hit.ranges||[{start:hit.start,end:hit.end}]);focus=body.querySelector("mark");}else body.textContent=item.text;section.append(body);target.append(section);}focus?.scrollIntoView({behavior:"smooth",block:"center"});
-  }
+  function revealSearchTarget(){const hit=state.searchTarget;if(!hit)return;const entry=currentEntry();const card=[...$("entryRecordings").children].find(x=>x.dataset.partId===hit.partId);if(!card)return;const details=card.querySelector("details"),body=card.querySelector(".transcript-body");details.open=true;body.replaceChildren();markText(body,hit.text,hit.ranges||[{start:hit.start,end:hit.end}]);const range=hitAudioRange(entry,hit);if(range){const jump=make("button","text-action","Play this audio section · "+window.UnscriptedRecordingPlayer.clock(range.start/1000));jump.type="button";jump.onclick=()=>card.querySelector(".recording-player")?.playFrom(range.start/1000).catch(e=>showToast(e.message));details.prepend(jump);}body.querySelector("mark")?.scrollIntoView({behavior:"smooth",block:"center"});}
   async function searchByMeaning(){const query=$("searchInput").value.trim();if(!query)return;if(!activeAI()){showToast("Connect AI to search by meaning.");return;}const revision=++searchRevision;const hits=[],chunks=[];
-    for(const entry of state.entries.filter(e=>e.kind!=="diaryChat"&&(state.topic==="All"||(e.tags||[]).includes(state.topic))))for(const {part,text} of searchableParts(entry)){for(let start=0;start<text.length;start+=1300)chunks.push({id:String(chunks.length),entryId:entry.id,partId:part.id,start,text:text.slice(start,start+1500),full:text});}
+    for(const entry of state.entries.filter(e=>libraryEntryMatches(e)&&(state.topic==="All"||(e.tags||[]).includes(state.topic))))for(const {part,text} of searchableParts(entry).filter(x=>libraryPartMatches(x.part))){for(let start=0;start<text.length;start+=1300)chunks.push({id:String(chunks.length),entryId:entry.id,partId:part.id,start,text:text.slice(start,start+1500),full:text});}
     $("semanticSearch").disabled=true;try{for(let i=0;i<chunks.length;i+=20){if(revision!==searchRevision)return;$("searchStatus").textContent="Searching excerpts "+Math.min(i+20,chunks.length)+" / "+chunks.length;const batch=chunks.slice(i,i+20),result=await callAI("/search",{query,excerpts:batch.map(c=>({id:c.id,text:c.text}))});if(revision!==searchRevision)return;for(const match of result.matches||[]){const c=batch.find(c=>c.id===match.id);if(!c||typeof match.quote!=="string")continue;const local=c.text.toLowerCase().indexOf(match.quote.toLowerCase());if(local<0||!match.quote.trim())continue;const start=c.start+local,end=start+match.quote.length;if(hits.some(h=>h.partId===c.partId&&Math.abs(h.start-start)<120))continue;hits.push({entryId:c.entryId,partId:c.partId,text:c.full,start,end});}semanticResults={query,hits:[...hits]};renderSearch(query);}}catch(e){$("searchStatus").textContent="Search paused: "+e.message+". Matches found so far are shown.";}finally{$("semanticSearch").disabled=false;}}
   function cleanAnswer(text,sources){let answer=String(text||"");for(const source of sources){answer=answer.split("["+source.id+"]").join("");answer=answer.split(source.id).join("");}answer=answer.replace(/\s*[([]\s*(?:sources?\s*:?\s*)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*[)\]]/gi,"");return answer.replace(/\(\s*(?:source\s*:?)?\s*\)/gi,"").replace(/\[\s*\]/g,"").replace(/ +([.,!?])/g,"$1").replace(/ {2,}/g," ").trim();}
   function relativeDate(iso){const days=Math.floor((Date.now()-new Date(iso).getTime())/86400000);if(days===0)return "Today";if(days===1)return "Yesterday";if(days<7)return days+" days ago";if(days<28)return Math.floor(days/7)+" weeks ago";return new Date(iso).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"});}
@@ -728,25 +742,15 @@
     const target=$("reflectionSources");target.replaceChildren();
     const saved=sortedParts(entry).filter(part=>part.reflectionAnswer&&!part.parentQuestionId);
     const legacy=(entry.reflections||[]).map(item=>({...item,legacy:true}));
+    $("perspectiveSummaries").hidden=!saved.length&&!legacy.length;
     for(const item of [...legacy,...saved]){
-      const card=make("section","reflection-answer-card");
+      const card=make("section","reflection-answer-card");card.dataset.summaryPart=item.id;
       card.append(make("div","tiny",fmtDate(item.createdAt,true)),make("h3","reflection-question",item.question));
       if(!item.legacy){
-        if(item.clips?.length)card.append(window.UnscriptedRecordingPlayer.create(item.clips,getAudio,"reflection answer",{entryId:entry.id,title:entry.title}));
-        const pending=(item.clips||[]).filter(c=>!c.transcript&&!c.transcriptionComplete).length;
-        if(pending){const status=make("div","reflection-pending","⚠ "+pending+" audio clip"+(pending===1?"":"s")+" awaiting transcription");const retry=make("button","text-action",state.processing.has(entry.id)?"Transcribing…":"Continue transcription");retry.disabled=state.processing.has(entry.id);retry.onclick=()=>processEntry(entry.id);status.append(retry);card.append(status);}
         card.append(summarySwitch(item.id,item.summary,item.bulletPoints,()=>processEntry(entry.id)));
-        const details=make("details","reflection-transcript"),heading=make("summary","","Full transcript");
-        details.append(heading,make("p","reflection-answer-text",item.answer||"Your audio is saved. Transcript pending."));
-        const edit=make("button","text-action","Edit transcript");edit.type="button";edit.onclick=()=>openEditor("Edit reflection transcript",item.answer||"",async value=>{
-          if(!value.trim())return;
-          const fresh=await transaction("entries","readonly",store=>store.get(entry.id));
-          const part=fresh?.parts.find(p=>p.id===item.id);if(!part)throw Error("This reflection no longer exists.");
-          part.answer=value;part.answerEdited=true;part.text="Reflection question: "+part.question+"\nYour answer: "+value;part.summary="";part.bulletPoints=[];
-          await saveEntry(fresh);await refreshEntries();renderEntry();processEntry(entry.id);
-        });details.append(edit);card.append(details);
       }
-      for(const id of item.sourceIds||[]){const source=state.entries.find(e=>e.id===id);if(!source)continue;const button=make("button","source-link",fmtDate(source.createdAt)+" · "+source.title);button.type="button";button.onclick=()=>openEntry(id);card.append(button);}
+      for(const id of item.sourceIds||[]){if(id===entry.id)continue;const source=state.entries.find(e=>e.id===id);if(!source)continue;const button=make("button","source-link",fmtDate(source.createdAt)+" · "+source.title);button.type="button";button.onclick=()=>openEntry(id);card.append(button);}
+      if(item.legacy)card.append(make("p","summary-text",item.summary||item.answer||item.text||""));
       target.append(card);
     }
   }
@@ -875,14 +879,14 @@
   function chooseWheel(e){const rect=$("colourWheel").getBoundingClientRect();const dx=e.clientX-(rect.left+rect.width/2),dy=e.clientY-(rect.top+rect.height/2),radius=rect.width/2;accent.h=(Math.atan2(dy,dx)*180/Math.PI+360)%360;accent.s=Math.min(Math.hypot(dx,dy)/(radius*.92),1);updatePicker();}
   function bindEvents() {
     $("homeLogo").onclick=()=>switchView("home");$("navLibrary").onclick=()=>switchView("home");$("navAsk").onclick=()=>switchView("ask");$("settingsButton").onclick=()=>switchView("settings");$("settingsBack").onclick=()=>switchView("home");$("entryBack").onclick=()=>switchView("home");
-    $("startNewButton").onclick=()=>startRecording(null);$("navRecord").onclick=()=>startRecording(null);$("continueLastButton").onclick=()=>{if(state.entries[0])startRecording(state.entries[0].id);};$("searchInput").oninput=()=>{searchRevision++;semanticResults=null;renderHome();};
+    $("libraryKind").onchange=()=>{state.libraryKind=$("libraryKind").value;searchRevision++;semanticResults=null;renderHome();};$("startNewButton").onclick=()=>startRecording(null);$("navRecord").onclick=()=>startRecording(null);$("continueLastButton").onclick=()=>{if(state.entries[0])startRecording(state.entries[0].id);};$("searchInput").oninput=()=>{searchRevision++;semanticResults=null;renderHome();};
     $("cancelRecordingButton").onclick=requestCancelRecording;$("keepRecordingButton").onclick=()=>{$("cancelRecordingModal").hidden=true;};$("confirmCancelRecording").onclick=cancelRecording;
     $("pauseRecording").onclick=togglePause;$("finishRecording").onclick=requestFinishRecording;$("continueRecording").onclick=keepRecording;$("confirmFinishRecording").onclick=confirmFinishRecording;
     $("addToEntryButton").onclick=openChoice;$("choiceClose").onclick=closeChoice;$("choiceRecord").onclick=()=>{const id=state.selected;closeChoice();startRecording(id);};$("choiceWrite").onclick=()=>{const id=state.selected;closeChoice();writeThought(id);};$("addNoteButton").onclick=()=>writeThought(state.selected);
     $("editTitleButton").onclick=()=>{const entry=currentEntry();if(entry)openEditor("Give it a title",entry.title,async value=>{entry.title=value||"Untitled thought";entry.titleEdited=true;await saveEntry(entry);await refreshEntries();renderEntry();});};
     $("editSummaryButton").onclick=()=>{const entry=currentEntry();if(entry)openEditor("Edit summary",entry.summary||"",async value=>{entry.summary=value;entry.summaryEdited=true;await saveEntry(entry);await refreshEntries();renderEntry();});};
     $("addTopicButton").onclick=()=>{const entry=currentEntry();if(entry)openEditor("Edit topics",(entry.tags||[]).join(", "),async value=>{entry.tags=[...new Set(value.split(",").map(x=>x.trim()).filter(Boolean))].slice(0,15);entry.userTags=entry.tags.slice();await saveEntry(entry);await refreshEntries();renderEntry();},"Separate topics with commas");};
-    $("transcriptToggle").onclick=()=>{state.searchTarget=null;state.openTranscript=!state.openTranscript;renderEntry();};$("transcribeButton").onclick=()=>{const entry=currentEntry();if(entry)processEntry(entry.id);};$("deleteEntryButton").onclick=deleteEntry;
+    $("transcribeButton").onclick=()=>{const entry=currentEntry();if(entry)processEntry(entry.id);};$("deleteEntryButton").onclick=deleteEntry;
     $("closeEditor").onclick=closeEditor;$("editorCancel").onclick=closeEditor;$("editorSave").onclick=submitEditor;$("editorModal").onclick=(e)=>{if(e.target===$("editorModal"))closeEditor();};
     $("choiceModal").onclick=(e)=>{if(e.target===$("choiceModal"))closeChoice();};
     $("reflectButton").onclick=()=>{const entry=currentEntry();if(entry)window.UnscriptedPerspective.open(entry.id);};

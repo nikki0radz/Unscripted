@@ -1,4 +1,4 @@
-# Unscripted for Android 1.0.11
+# Unscripted for Android 1.0.12
 
 Package: `com.nikki.unscripted`. Android 8 (API 26) or newer; target API 35.
 The shell bundles the diary frontend and connects to the existing private Unscripted backend. Sign in with the existing diary access code. The current WebView does not guarantee passkey support; access-code login remains available.
@@ -6,7 +6,7 @@ The shell bundles the diary frontend and connects to the existing private Unscri
 ## Install and move your diary
 
 1. In the existing browser/PWA diary, use Settings → Export backup. Keep the original diary installed until the transfer is checked.
-2. Install the signed `downloads/Unscripted-1.0.11.apk`. Android may ask permission to install apps from the browser/download manager.
+2. Install the signed `downloads/Unscripted-1.0.12.apk`. Android may ask permission to install apps from the browser/download manager.
 3. Open Unscripted, sign in with the existing access code and allow microphone access. Allow notifications to see ongoing recording/processing status.
 4. Settings → Import backup; select the exported JSON. Verify entry counts, transcripts and playback of several original recordings. Encrypted cloud restore is also available with the existing recovery password.
 5. Record a disposable 30-second entry, lock the phone, speak for another 30 seconds, reopen and save. Check the whole audio and transcription before relying on background capture for a long entry.
@@ -98,3 +98,13 @@ Tests cover correction persistence, request contents, no retranscription, unchan
 All live recording meters share a scrolling amplitude-history renderer. Browser meters measure RMS from the existing microphone stream; Android samples MediaRecorder peak amplitude every 50 ms on its service handler, exposes a cached volatile value through the bridge and avoids consuming amplitude during unrelated status calls. Main recordings, resumed native sessions, Another perspective, added thoughts and interview/quiz voice answers use the same renderer. No synthetic oscillation, frequency-bin decoration or repeated four-bar shape remains. Silence settles to baseline, pause/stop resets the bars, and meter cleanup disconnects analysis without stopping the recording stream.
 
 Automated checks cover native and browser samples, louder speech, history movement, silence, pause, hidden state and cleanup, plus recording/perspective/quiz saving regressions. Android build/signature checks pass; physical microphone response requires a phone check.
+
+## 1.0.12 summaries-first entries and library filters
+
+Entry reading order is main summary, interview/written additions and perspective summaries, topics, then labelled recordings with dates/times and individual expandable transcripts. Reflection source links back to the current entry are omitted; other source-entry links remain. Summary style and Delete entry share the footer. Transcript edits remain available for saved answers. Search results expand and highlight the matching recording's transcript.
+
+Library type filtering supports everything, diary entries, interviews, individual interview questions and perspective questions, alongside topic and text/semantic search. Question text as well as answers is searchable. Filter changes invalidate previous semantic results.
+
+Audio-section search labels use existing clip durations and transcript boundaries. They represent the whole saved clip range, not exact word timestamps, and add no AI calls. Edited answer text or missing durations do not receive invented timings. Play this audio section seeks to the known clip start in the full recording. Existing archives are not retranscribed; exact sentence alignment remains unimplemented pending approval for additional processing.
+
+Validation: layout ordering, filters, question search, conservative clip ranges, native/browser cross-clip seeking, recording/perspective/interview saving, summary corrections and backup regression checks; Android compilation/signature. No phone or visual browser renderer was available for visual QA.

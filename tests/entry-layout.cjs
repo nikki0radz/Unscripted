@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const app=fs.readFileSync('app.js','utf8'),html=fs.readFileSync('index.html','utf8');
+const section=html.slice(html.indexOf('id="entryView"'),html.indexOf('id="askView"'));
+const order=['id="entrySummary"','id="entryParts"','id="perspectiveSummaries"','id="entryTags"','id="entryRecordings"','id="entryFooter"'];
+for(let i=1;i<order.length;i++)assert(section.indexOf(order[i])>section.indexOf(order[i-1]),order[i]+' order');
+assert(!html.includes('id="transcriptToggle"'));assert(!app.includes('$("transcriptToggle")'));
+const start=app.indexOf('  function libraryEntryMatches'),end=app.indexOf('  function markText',start);
+const state={libraryKind:'all'},context={state,allParts:e=>e.parts||[],sortedParts:e=>e.parts||[]};vm.createContext(context);vm.runInContext(app.slice(start,end)+'\nthis.parts=searchableParts;this.range=hitAudioRange;this.matches=libraryEntryMatches;this.partMatches=libraryPartMatches;',context);
+const entry={kind:'interview',parts:[{id:'a',type:'recording',clips:[{transcript:'Owen was here.',duration:120000},{transcript:'We played Slay the Spire.',duration:120000}]}]};
+const text=context.parts(entry)[0].text,startMatch=text.indexOf('Slay');
+assert.deepEqual(JSON.parse(JSON.stringify(context.range(entry,{partId:'a',text,start:startMatch,end:startMatch+4}))),{start:120000,end:240000});
+entry.parts[0].answerEdited=true;assert.equal(context.range(entry,{partId:'a',text,start:startMatch,end:startMatch+4}),null);delete entry.parts[0].answerEdited;
+entry.parts[0].clips[0].duration=0;assert.equal(context.range(entry,{partId:'a',text,start:startMatch,end:startMatch+4}),null,'Do not invent ranges when duration is missing');
+state.libraryKind='diary';assert.equal(context.matches(entry),false);state.libraryKind='interviews';assert.equal(context.matches(entry),true);state.libraryKind='questions';assert.equal(context.partMatches({interviewQuestion:true}),true);assert.equal(context.partMatches({reflectionAnswer:true}),false);state.libraryKind='perspectives';assert.equal(context.partMatches({reflectionAnswer:true}),true);assert.equal(context.partMatches({reflectionAnswer:true,parentQuestionId:'a'}),false);
+const answer={parts:[{id:'q',type:'note',question:'What about Pippi?',interviewQuestion:true,answer:'We met for lunch.'}]};assert(context.parts(answer)[0].text.includes('What about Pippi?'));assert(context.parts(answer)[0].text.includes('We met for lunch.'));
+console.log('Passed: summaries-first order, single per-recording transcript route, question filters, question/answer search and conservative saved-clip time ranges.');

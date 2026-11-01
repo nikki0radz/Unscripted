@@ -24,6 +24,7 @@
       const sync=()=>{if(disposed)return;const state=JSON.parse(bridge.playbackStatus());if(state.token===token){position=state.position||0;duration=state.duration||duration;playing=!!state.playing;if(state.error)status.textContent=state.error;if(state.ended&&!ended)root.dispatchEvent(new Event('unscripted-session-ended'));ended=!!state.ended;}else playing=false;paint();};
       const stage=async()=>{if(staged)return;for(let i=0;i<segments.length;i++){const blob=await load(segments[i].id);if(!blob?.size)throw Error('Audio missing from this device. Try restoring a backup.');for(let offset=0;offset<blob.size;offset+=196608){if(disposed)throw Error('Recording closed');const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob.slice(offset,offset+196608));});const error=bridge.playbackWrite(token,i,data,offset>0);if(error)throw Error(error);}}staged=true;};
       root.play=async()=>{if(preparing||disposed)return;status.textContent='';const attempt=++request;preparing=true;button.disabled=true;try{bridge.requestNotifications?.();const state=JSON.parse(bridge.playbackStatus());if(state.token===token&&state.active){send('play');}else{status.textContent='Preparing audio…';await stage();if(disposed||attempt!==request)return;send('load',{token,entryId:options.entryId||'',title:options.title||label,clips:segments.map(s=>({duration:s.duration||1}))});}playing=true;status.textContent='';paint();}finally{preparing=false;button.disabled=false;}};
+      root.playFrom=async seconds=>{await root.play();send('seek',{position:Math.max(0,seconds)*1000});};
       root.pause=()=>{request++;const state=JSON.parse(bridge.playbackStatus());if(state.token===token)send('pause');playing=false;paint();};
       root.restartFromBeginning=()=>{root.pause();send('seek',{position:0});};
       root.dispose=()=>{disposed=true;clearInterval(timer);};
@@ -40,6 +41,7 @@
     const ready=Promise.all(segments.map(s=>load(s.id))).then(blobs=>{if(disposed)return;if(!blobs.length||blobs.some(b=>!b))throw Error('Audio missing from this device. Try restoring a backup.');sources=blobs.map(b=>URL.createObjectURL(b));audio.src=sources[index];button.disabled=false;seek.disabled=false;});
     ready.catch(error=>{status.textContent=error.message;});button.disabled=true;seek.disabled=true;
     root.play=()=>{status.textContent='';wantsPlay=true;render();return ready.then(()=>{if(disposed)throw Error('Recording closed');if(position()>=total()-.05)return change(0,true);return audio.play();}).catch(error=>{wantsPlay=false;render();throw error;});};
+    root.playFrom=seconds=>ready.then(()=>change(Math.max(0,seconds),true));
     root.pause=()=>{wantsPlay=false;audio.pause();render();};
     root.restartFromBeginning=()=>change(0,false);
     root.dispose=()=>{disposed=true;root.pause();audio.removeAttribute('src');audio.load();sources.forEach(s=>URL.revokeObjectURL(s));};

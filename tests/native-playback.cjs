@@ -10,6 +10,6 @@ const create=()=>context.window.UnscriptedRecordingPlayer.create([{id:'clip-a',d
 let p=create();await p.play();assert.equal(writes.length,1);assert.equal(calls[0][0],'load');assert.equal(calls[0][1].entryId,'entry-a');tick();assert.equal(p.children[0].attrs['aria-label'],'Pause recording');assert.ok(p.children[0].innerHTML.includes('<svg'));p.pause();assert.equal(calls.at(-1)[0],'pause');tick();assert.equal(p.children[0].attrs['aria-label'],'Play recording');
 p.children[2].value=32;p.children[2].oninput();assert.equal(calls.at(-1)[1].position,32000);
 p.dispose();assert.notEqual(calls.at(-1)[0],'stop','Re-rendering the entry must not kill background audio');p=create();await p.play();assert.equal(calls.at(-1)[0],'play');assert.equal(writes.length,1,'Reattach without rewriting active native audio');let ended=0;p.addEventListener('unscripted-session-ended',()=>ended++);snapshot.ended=true;snapshot.playing=false;tick();tick();assert.equal(ended,1);
-snapshot.active=false;await p.play();assert.equal(calls.at(-1)[0],'load','Restart service after notification Stop');p.dispose();
+snapshot.active=false;await p.play();assert.equal(calls.at(-1)[0],'load','Restart service after notification Stop');await p.playFrom(35);assert.equal(calls.at(-1)[0],"seek");assert.equal(calls.at(-1)[1].position,35000);p.dispose();
 console.log('Passed: native staging, entry routing, pause/play icons, seek, reattachment, completion deduplication and stopped-service restart.');
 })().catch(e=>{console.error(e);process.exitCode=1});

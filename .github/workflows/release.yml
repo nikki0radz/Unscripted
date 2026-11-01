@@ -24,22 +24,24 @@ jobs:
           import hashlib,json,pathlib,os
           feed=json.loads(pathlib.Path('app-update.json').read_text())
           version=feed['versionName']
-          assert version == '1.0.11', 'Review this release workflow before publishing a new version'
+          assert version == '1.0.12', 'Review this release workflow before publishing a new version'
           apk=pathlib.Path('downloads')/f'Unscripted-{version}.apk'
           data=apk.read_bytes()
           assert len(data)==feed['sizeBytes'], 'APK size mismatch'
           assert hashlib.sha256(data).hexdigest()==feed['sha256'], 'APK checksum mismatch'
-          pathlib.Path('release-notes.md').write_text('''Unscripted 1.0.11
+          pathlib.Path('release-notes.md').write_text('''Unscripted 1.0.12
 
-          - Voice-reactive waveforms across the main recorder, Another perspective, added thoughts and interview/quiz answers.
-          - Scrolling microphone-level history instead of looping animations or repeated bar patterns.
-          - Faster Android level sampling, with silence and pause returning the bars to baseline.
+          - Summaries and perspective questions first, then topics, then recordings and transcripts.
+          - Named audio recordings with dates and individual expandable transcripts.
+          - Neater headings and dropdowns; Summary style and Delete entry share one row.
+          - Library filters for diary entries, interviews and individual question types.
+          - Search hits show saved audio clip ranges and can jump to the matching clip without new AI calls.
 
           Install this APK over the existing Unscripted app to update.
           ''')
           PY
-          if gh release view v1.0.11 >/dev/null 2>&1; then
-            echo 'Release v1.0.11 already exists; leaving it unchanged.'
+          if gh release view v1.0.12 >/dev/null 2>&1; then
+            echo 'Release v1.0.12 already exists; leaving it unchanged.'
           else
-            gh release create v1.0.11 downloads/Unscripted-1.0.11.apk app-update.json --target "$GITHUB_SHA" --title "Unscripted 1.0.11" --notes-file release-notes.md --latest
+            gh release create v1.0.12 downloads/Unscripted-1.0.12.apk app-update.json --target "$GITHUB_SHA" --title "Unscripted 1.0.12" --notes-file release-notes.md --latest
           fi

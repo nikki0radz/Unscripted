@@ -37,7 +37,7 @@
         </section>
         <section class="library-section">
           <div class="section-title-row"><h2>Your library</h2><span id="entryCount" class="count-pill">0 entries</span></div>
-          <div class="search-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input id="searchInput" type="search" placeholder="Search your thoughts..." aria-label="Search entries" /><button id="searchButton" type="button" aria-label="Search transcripts">Search</button></div><div class="search-tools"><button id="semanticSearch" class="text-action" type="button">✦ Search by meaning</button><span id="searchStatus" class="tiny" role="status"></span></div>
+          <label class="library-kind">Show<select id="libraryKind"><option value="all">Everything</option><option value="diary">Diary entries</option><option value="interviews">Interviews</option><option value="questions">Interview questions</option><option value="perspectives">Another perspective questions</option></select></label><div class="search-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg><input id="searchInput" type="search" placeholder="Search your thoughts..." aria-label="Search entries" /><button id="searchButton" type="button" aria-label="Search transcripts">Search</button></div><div class="search-tools"><button id="semanticSearch" class="text-action" type="button">✦ Search by meaning</button><span id="searchStatus" class="tiny" role="status"></span></div>
           <div id="topicFilters" class="filter-strip" aria-label="Filter by topic"></div>
           <div id="entriesList" class="entries-list"></div>
         </section>
@@ -47,15 +47,14 @@
         <div class="entry-date-row"><div class="entry-meta" id="entryDate"></div><button id="editTitleButton" type="button" class="icon-button small" aria-label="Edit title">✎</button></div>
         <div class="entry-title-line"><h1 id="entryTitle"></h1></div>
         <p id="interviewEntryStatus" class="tiny interview-status" hidden></p><p class="entry-sub-meta" id="entryDuration"></p>
-        <div class="section-title-row margin-top"><h2>Recordings & notes</h2><button id="addToEntryButton" class="action-small" type="button">＋ Add to entry</button></div>
+        <section class="entry-block"><div class="section-title-row"><h2>In a nutshell</h2><button id="editSummaryButton" class="text-action" type="button">Edit</button></div><p id="entrySummary" class="summary-text"></p></section>
         <div id="entryParts" class="parts-list"></div>
+        <section id="perspectiveSummaries" class="entry-block reflection-card"><div class="section-title-row"><h2>Another perspective</h2></div><div id="reflectionStatus" class="notice" role="status" hidden></div><p id="reflectionQuestion" class="reflection-question" hidden></p><div id="reflectionSources"></div></section>
         <div id="entryActions" class="entry-action-row"><button id="transcribeButton" class="button-soft" type="button"><span class="entry-action-icon" aria-hidden="true">✦</span><span id="summaryActionLabel">Refresh<br>summary</span></button><button id="reflectButton" class="button-soft" type="button"><span class="entry-action-icon" aria-hidden="true">↗</span><span id="perspectiveActionLabel">Another<br>perspective</span></button><button id="addNoteButton" class="button-soft" type="button"><span class="entry-action-icon" aria-hidden="true">＋</span><span>Write a<br>thought</span></button></div>
         <div id="entryStatus" class="notice" hidden></div>
-        <section class="entry-block"><div class="section-title-row"><h2>In a nutshell</h2><button id="editSummaryButton" class="text-action" type="button">Edit</button></div><p id="entrySummary" class="summary-text"></p></section>
         <section class="entry-block"><div class="section-title-row"><h2>Topics</h2><button id="addTopicButton" class="text-action" type="button">Edit topics ＋</button></div><div id="entryTags" class="tag-row"></div></section>
-        <section class="entry-block"><button id="transcriptToggle" class="collapse-trigger" type="button" aria-expanded="false"><span>Full transcription</span><span id="transcriptArrow">⌄</span></button><div id="transcriptArea" hidden></div></section>
-        <section class="entry-block reflection-card"><div class="section-title-row"><h2>Another perspective</h2></div><p class="tiny">One focused question to challenge an assumption, consider another viewpoint or notice a pattern. Saved questions and answers stay separate here and are included in diary searches.</p><div id="reflectionStatus" class="notice" role="status" hidden></div><p id="reflectionQuestion" class="reflection-question" hidden></p><div id="reflectionSources"></div></section>
-        <button id="deleteEntryButton" class="danger-quiet" type="button">Delete this entry</button>
+        <section id="recordingsSection" class="entry-block"><div class="section-title-row"><h2>Recordings & transcripts</h2><button id="addToEntryButton" class="action-small" type="button">＋ Add to entry</button></div><div id="entryRecordings" class="parts-list"></div></section>
+        <div id="entryFooter" class="entry-footer"><button id="deleteEntryButton" class="danger-quiet" type="button">Delete entry</button></div>
       </section>
       <section id="askView" class="view" hidden>
         <div class="eyebrow"><span class="dot"></span> ASK YOUR ARCHIVE</div>
