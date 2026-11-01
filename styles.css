@@ -345,3 +345,20 @@ html,body{font-family:var(--reading-font);font-size:var(--reading-size)}button,i
 .correction-actions>button::before{content:'';position:absolute;inset:7px 0;z-index:-1;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
 .correction-actions>.button-soft{color:var(--accent)}
 .correction-actions>.button-soft::before{background:color-mix(in srgb,var(--accent) 10%,var(--panel));border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+
+/* Smaller 18px soft circles; the SVG geometry is centred in both axes. */
+.soft-disclosure-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 18px;width:18px;height:18px;min-width:18px;padding:0;margin:0;border:0;border-radius:50%;background:color-mix(in srgb,var(--accent) 12%,var(--panel));color:var(--accent);vertical-align:middle;pointer-events:none}
+.soft-disclosure-icon>svg,#libraryKindButton .soft-disclosure-icon>svg{display:block;width:12px;height:12px;margin:0;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s ease;transform-origin:50% 50%}
+summary.soft-disclosure,#entryView details>summary.soft-disclosure{display:flex;align-items:center;justify-content:flex-start;gap:7px;list-style:none;padding-right:0;min-height:44px}
+summary.soft-disclosure::marker{content:''}
+summary.soft-disclosure::-webkit-details-marker{display:none}
+summary.soft-disclosure::after,#entryView details>summary.soft-disclosure::after{content:none;display:none}
+details[open]>summary>.soft-disclosure-icon>svg,[aria-expanded=true]>.soft-disclosure-icon>svg,.topic-toggle[aria-expanded=true] .soft-disclosure-icon>svg{transform:rotate(180deg)}
+#entryView details>summary.interview-card-heading.soft-disclosure{display:block;padding-right:40px}
+.interview-card-heading>.soft-disclosure-icon{position:absolute;right:12px;top:14px}
+.settings-group>summary.soft-disclosure{justify-content:space-between;padding-right:20px}
+.topic-chevron.soft-disclosure{display:inline-flex;margin-left:auto;font-size:inherit;transform:none!important}
+.entry-footer .tone-panel>summary.soft-disclosure{width:fit-content;max-width:100%;padding:8px 0;min-height:44px}
+.entry-footer .danger-quiet{padding:8px 0;min-height:44px}
+.entry-footer{gap:12px}
+@media(prefers-reduced-motion:reduce){.soft-disclosure-icon>svg{transition:none}}
