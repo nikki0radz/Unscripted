@@ -66,4 +66,4 @@ Future releases must test approved UI with Preview off and with old cached previ
 
 
 ### Compact entry layout delivery (2 November 2026)
-Approved slim toolbar, summary-heading Clarify, horizontal topics, compact aligned recording/Transcript/info row, 9px seek thumb and smaller red Delete are implemented in source. Pending: signed test APK through release workflow and phone acceptance; do not mark as shipped until that candidate is delivered.
+Approved slim toolbar, summary-heading Clarify, horizontal topics, compact aligned recording/Transcript/info row, 9px seek thumb and smaller red Delete are implemented in source. Packaged in the locally built, original-key-signed 1.0.19 (code 20) APK. Phone acceptance remains pending; the stable update feed is unchanged. Use the established local build/sign method until automated signing is explicitly configured and verified.

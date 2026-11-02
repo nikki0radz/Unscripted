@@ -50,7 +50,7 @@ These future items are tracked in BACKLOG.md. The approved backup screen does no
 imply these larger storage changes have been implemented.
 
 
-## Approved compact entry layout — 2 November 2026 (source implemented; APK pending)
+## Approved compact entry layout — 2 November 2026 (1.0.19, version code 20)
 
 - Slim joined toolbar for Refresh summary, Another perspective and Write a thought.
 - Clarify beside the summary heading; compact correction editor with Cancel left and Update summary right. Manual Edit remains available.
@@ -60,4 +60,4 @@ imply these larger storage changes have been implemented.
 - Smaller red Delete entry; recording names remain available to accessibility and playback metadata.
 - Installed default, independent of appearance preview. No audio, transcripts or stored entries migrated.
 
-Validation: all 15 Android workflow checks pass; DOM interaction check covers info, transcript/rerender state, written notes, clarification draft/save/cancel and focus. Browser rendering could not be checked in this environment (browser download failed). No signed APK or phone validation completed yet.
+Validation: all 15 Android workflow checks pass; DOM interaction check covers info, transcript/rerender state, written notes, clarification draft/save/cancel and focus. Browser rendering could not be checked in this environment (browser download failed). Local APK built and signed with the original certificate; packaged UI assets match source byte-for-byte. Phone acceptance remains pending. Delivered directly without stable-feed promotion.
