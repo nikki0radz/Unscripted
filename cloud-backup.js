@@ -5,7 +5,8 @@
   const C = globalThis.UnscriptedCrypto;
   const hex = bytes => Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
   let key = null, salt = null, timer = null, busy = false, dirty = true, restoring = false;
-  let generation = 0, password = "", uploaded = new Map();
+  let generation = 0, password = "", uploaded = new Map(), keyScope = "";
+  const vault = window.UnscriptedAndroid;
   const deviceId = localStorage.getItem("unscripted-backup-device") || hex(crypto.getRandomValues(new Uint8Array(16)));
   localStorage.setItem("unscripted-backup-device", deviceId);
   function status(message, error = false) {
@@ -15,8 +16,39 @@
   function dedicated() { return !!document.querySelector('meta[name="unscripted-private-host"]'); }
   function render() {
     $("cloudEnabled").checked = localStorage.getItem("unscripted-cloud-enabled") === "1";
-    if (!dedicated()) status("Move to the private Cloudflare diary address before enabling backups. Export a local backup first if you already have entries.");
-    else if (!key) status("Unlock backups with your recovery password. Automatic backups run while the app is open.");
+    $("cloudLastSuccess").textContent=localStorage.getItem("unscripted-cloud-last")||"No successful backup recorded on this phone";
+    $("cloudAutoNote").textContent=!$("cloudEnabled").checked?"Paused. You can still back up manually.":key?"On while the app is open.":"Paused until you set up backup access below.";
+    if (!dedicated()) status("Connect your private diary storage before enabling cloud backups. You can still save a backup file.");
+    else if (!key && !$("cloudStatus").textContent) status("Set up backup access once in Advanced backup settings.");
+  }
+  async function scope() {
+    const config=window.UnscriptedDiary.config();
+    return config.url+":"+hex(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(config.code||""))));
+  }
+  async function remember(derived,nextSalt,expectedScope,attempt){
+    const raw=new Uint8Array(await crypto.subtle.exportKey("raw",derived));
+    try { if(attempt!==generation)return ""; return vault.saveBackupKey(expectedScope,JSON.stringify({key:hex(raw),salt:hex(nextSalt)})); }
+    finally { raw.fill(0); }
+  }
+  async function resumeAccess(){
+    if(!dedicated()||!vault?.loadBackupKey)return;
+    const attempt=generation,current=await scope();
+    if(attempt!==generation)return;
+    if(key&&keyScope===current)return;
+    key=null;password="";salt=null;uploaded.clear();
+    const saved=vault.loadBackupKey(current);if(!saved)return;
+    try {
+      const data=JSON.parse(saved);
+      if(!/^[a-f0-9]{64}$/.test(data.key)||!/^[a-f0-9]{32}$/.test(data.salt))throw Error();
+      const bytes=hexText=>new Uint8Array(hexText.match(/../g).map(x=>parseInt(x,16)));
+      const raw=bytes(data.key);let restored;
+      try{restored=await crypto.subtle.importKey("raw",raw,"AES-GCM",false,["encrypt","decrypt"]);}finally{raw.fill(0);}
+      if(attempt!==generation)return;
+      key=restored;salt=bytes(data.salt);keyScope=current;
+      const lastError=localStorage.getItem("unscripted-cloud-last-error");
+      status(lastError||"Ready to back up. This phone remembers your backup access.",!!lastError);
+    }catch{status("Backup access needs setting up again. Enter your recovery password in Advanced settings.",true);}
+    render();
   }
   async function request(path, body, binary = false) {
     const config = window.UnscriptedDiary.config();
@@ -43,7 +75,7 @@
   }
   async function unlock() {
     if (!dedicated()) { render(); return; }
-    if (busy) { status("Wait until the current backup finishes."); return; }
+    if (busy || restoring) { status("Wait until the current backup or restore finishes."); return; }
     $("cloudUnlock").disabled = true;
     const attempt = ++generation;
     key = null; password = ""; uploaded.clear();
@@ -58,15 +90,21 @@
         await C.decrypt(bytes, entered); // Verify existing recovery password before writing anything.
         nextSalt = C.header(bytes).salt;
       }
-      const nextKey = await C.derive(entered, nextSalt);
+      const currentScope=await scope();
+      const canRemember=!!vault?.saveBackupKey;
+      const nextKey = await C.derive(entered, nextSalt,canRemember);
       if (generation !== attempt) return;
-      salt = nextSalt; key = nextKey; password = entered;
+      salt = nextSalt; key = nextKey; password = entered; keyScope=currentScope;
       $("cloudPassword").value = "";
       localStorage.setItem("unscripted-cloud-enabled", $("cloudEnabled").checked ? "1" : "0");
-      status("Backups unlocked. Recovery password stays in memory until you lock or close the app.");
+      let warning="";
+      if(canRemember)warning=await remember(nextKey,nextSalt,currentScope,attempt);
+      if(attempt!==generation)return;
+      status(warning||(canRemember?"Ready. This phone will remember backup access; your recovery password is not saved.":"Ready for this session. Reopen the Android app to remember backup access."),!!warning);
+      render();
       // Do not replace a cloud snapshot with an empty newly installed diary.
       if (window.UnscriptedDiary.entries().length && $("cloudEnabled").checked) schedule();
-      else if (list.length) status("Backups unlocked. Choose a cloud snapshot below to restore it on this device.");
+      else if (list.length) status("Backups unlocked. You can now restore a saved backup from Advanced settings.");
     } catch (error) { status(error.message, true); }
     finally { $("cloudUnlock").disabled = false; }
   }
@@ -76,11 +114,13 @@
     timer = setTimeout(() => run(false), 15000);
   }
   async function run(manual = true) {
-    if (!key) { status("Unlock backups with your recovery password first.", true); return; }
+    if($("cloudUnlock").disabled)return;
+    await resumeAccess();
+    if (!key) { $("backupAdvanced").open=true;$("cloudPassword").focus();status("Enter your recovery password once to set up this phone.", true); return; }
     if (busy || restoring) return;
     const D = window.UnscriptedDiary;
     if (D.recording()) { status("Waiting for your recording to finish before backing up."); schedule(); return; }
-    if (!D.ready()) return;
+    if (!D.ready()) { schedule(); return; }
     if (!D.entries().length) { status("No entries on this device to back up. Existing cloud snapshots stay untouched."); return; }
     busy = true; dirty = false; $("cloudNow").disabled = true;
     const activeKey = key, activeSalt = salt;
@@ -96,7 +136,10 @@
         const salted = new Uint8Array(activeSalt.length + data.length); salted.set(activeSalt); salted.set(data, activeSalt.length);
         const objectKey = "clips/" + hex(new Uint8Array(await crypto.subtle.digest("SHA-256", salted)));
         if (!uploaded.has(objectKey)) {
-          await upload(objectKey, await C.encrypt(data, activeKey, activeSalt));
+          const encryptedAudio=await C.encrypt(data, activeKey, activeSalt);
+          await upload(objectKey, encryptedAudio);
+          const verifiedAudio=await download(objectKey);
+          if(verifiedAudio.length!==encryptedAudio.length||!verifiedAudio.every((v,i)=>v===encryptedAudio[i]))throw Error("Audio verification failed. Please try again.");
           uploaded.set(objectKey, true);
         }
         audios.push({ id: clip.id, key: objectKey, type: blob.type, size: blob.size });
@@ -111,8 +154,10 @@
       if(readBack.length!==encrypted.length || !readBack.every((value,index)=>value===encrypted[index]))throw new Error("Cloud read-back verification failed. No successful backup has been confirmed.");
       const when = new Date().toLocaleString();
       localStorage.setItem("unscripted-cloud-last", when);
-      status("Backup verified " + when + ". Stored in your private R2 bucket under diary/snapshots. Seven recent snapshots are kept for this device.");
-    } catch (error) { dirty = true; status("Backup not completed: " + error.message + " Your local entries are still saved.", true); }
+      render();
+      localStorage.removeItem("unscripted-cloud-last-error");
+      status("Backup completed and checked. Your diary and recordings are backed up.");
+    } catch (error) { dirty = true; const message="Backup not completed: " + error.message + " Your local entries are still saved.";localStorage.setItem("unscripted-cloud-last-error",message);status(message, true); }
     finally {
       busy = false; $("cloudNow").disabled = false;
       if (dirty && key && localStorage.getItem("unscripted-cloud-enabled") === "1") { clearTimeout(timer); timer = setTimeout(() => run(false), 60000); }
@@ -128,11 +173,11 @@
         select.append(option);
       }
       $("cloudRestore").disabled = !list.length;
-      status(list.length ? "Choose a snapshot to restore. Local entries with matching IDs will be replaced." : "No cloud backups yet.");
+      status(list.length ? "Choose a backup to restore. Local entries with matching IDs will be replaced." : "No cloud backups yet.");
     } catch (error) { status(error.message, true); }
   }
   async function restore() {
-    if (!key || !password) { status("Unlock backups first.", true); return; }
+    if (!key || !password) { $("backupAdvanced").open=true;$("cloudPassword").focus();status("Enter your recovery password and tap Unlock before restoring.", true); return; }
     if (busy || window.UnscriptedDiary.recording()) { status("Finish your recording or backup first."); return; }
     const chosen = $("cloudSnapshots").value;
     if (!chosen) return;
@@ -167,12 +212,14 @@
   $("cloudList").onclick = listSnapshots;
   $("cloudRestore").onclick = restore;
   $("cloudLock").onclick = () => {
-    if (busy) { status("Wait until the current backup finishes."); return; }
-    generation++; key = null; password = ""; salt = null; uploaded.clear(); clearTimeout(timer); $("cloudPassword").value = ""; status("Backups locked. Automatic uploads are paused.");
+    if (busy || restoring) { status("Wait until the current backup or restore finishes."); return; }
+    vault?.forgetBackupKey?.();
+    generation++; key = null; password = ""; salt = null; uploaded.clear(); clearTimeout(timer); $("cloudPassword").value = ""; status("Saved backup access removed from this phone. Cloud backups are unchanged. Automatic uploads are paused.");render();
   };
-  $("cloudEnabled").onchange = () => { localStorage.setItem("unscripted-cloud-enabled", $("cloudEnabled").checked ? "1" : "0"); if ($("cloudEnabled").checked) schedule(); else { clearTimeout(timer); status("Automatic backups paused."); } };
+  $("cloudEnabled").onchange = () => { localStorage.setItem("unscripted-cloud-enabled", $("cloudEnabled").checked ? "1" : "0"); if ($("cloudEnabled").checked) schedule(); else { clearTimeout(timer); status("Automatic backups paused."); } render(); };
   window.addEventListener("unscripted-change", schedule);
   window.addEventListener("online", schedule);
   window.addEventListener("unscripted-settings", render);
   render();
+  resumeAccess().then(()=>{render();schedule();}).catch(()=>status("Could not load backup access. Open Advanced settings to set it up again.",true));
 })();

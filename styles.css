@@ -362,3 +362,15 @@ details[open]>summary>.soft-disclosure-icon>svg,[aria-expanded=true]>.soft-discl
 .entry-footer .danger-quiet{padding:8px 0;min-height:44px}
 .entry-footer{gap:12px}
 @media(prefers-reduced-motion:reduce){.soft-disclosure-icon>svg{transition:none}}
+
+/* Simple backup overview; recovery controls stay tucked away. */
+.simple-backups .backup-overview{padding:15px;border:1px solid var(--line);border-radius:16px;background:var(--panel2);margin-bottom:16px}
+.simple-backups .backup-overview>p{margin:0 0 6px}
+#cloudLastSuccess{font-size:calc(14px * var(--text-scale,1));font-weight:500}
+.simple-backups #cloudStatus{font-size:calc(12px * var(--text-scale,1));padding:0;margin:9px 0;background:transparent;border:0}
+.simple-backups #cloudNow{padding:9px 16px;font-size:calc(13px * var(--text-scale,1));margin-top:6px}
+.simple-backups #exportBackup{margin-top:12px;min-height:44px}
+.backup-advanced{margin-top:15px;border-top:1px solid var(--line)}
+.backup-advanced>summary{font-size:calc(12px * var(--text-scale,1));color:var(--muted)}
+.backup-advanced .settings-actions{display:flex;flex-wrap:wrap;gap:8px}
+.backup-advanced button{font-size:calc(12px * var(--text-scale,1))}

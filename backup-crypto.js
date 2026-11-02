@@ -2,10 +2,10 @@
 (() => {
   const encoder = new TextEncoder();
   const magic = encoder.encode("USC1");
-  async function derive(password, salt) {
+  async function derive(password, salt, extractable = false) {
     if (typeof password !== "string" || password.length < 16) throw new Error("Use a recovery password of at least 16 characters, ideally several random words.");
     const material = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveKey"]);
-    return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 600000, hash: "SHA-256" }, material, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 600000, hash: "SHA-256" }, material, { name: "AES-GCM", length: 256 }, extractable, ["encrypt", "decrypt"]);
   }
   function header(bytes) {
     if (bytes.length < 48 || !magic.every((v, i) => bytes[i] === v)) throw new Error("This is not an encrypted Unscripted backup.");

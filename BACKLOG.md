@@ -1,7 +1,15 @@
 # Product backlog
 
-## Simple, dependable backups — design proposed, implementation pending
-Requested 1 November 2026. No backup logic or encryption changes made in this task.
+## Simple, dependable backups — first implementation in 1.0.17
+Requested 1 November 2026. Implemented 2 November in 1.0.17: simple overview,
+last-success display, persisted latest failure, advanced recovery controls, discoverable
+local export, Android Keystore-encrypted device-only derived key, password-gated restore,
+and read-back verification of uploaded audio as well as the manifest. Existing encryption
+format and recovery password remain compatible. One-time setup is required after updating.
+
+Remaining: real-device validation, streaming large-library export/restore (the current
+250 MB cloud restore cap remains), resumable transfer, confirmed local-file completion,
+and native background work. The detailed requirements below remain the acceptance plan.
 
 - Default view: last successful cloud backup with date/time, clear current status,
   automatic backup on/off, and one Back up now action. Keep last success visible

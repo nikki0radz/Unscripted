@@ -95,7 +95,10 @@ public class MainActivity extends Activity {
  @Override protected void onDestroy(){if(active==this)active=null;super.onDestroy();}
  @Override public void onBackPressed(){web.evaluateJavascript("window.UnscriptedDiary?.recording()?window.UnscriptedDiary.toast('Save or pause your recording before leaving.'):history.back()",null);}
  class Bridge {
-  @JavascriptInterface public boolean available(){return true;}
+  @JavascriptInterface public String saveBackupKey(String scope,String value){return BackupKeyVault.save(MainActivity.this,scope,value);}
+ @JavascriptInterface public String loadBackupKey(String scope){return BackupKeyVault.load(MainActivity.this,scope);}
+ @JavascriptInterface public void forgetBackupKey(){BackupKeyVault.clear(MainActivity.this);}
+ @JavascriptInterface public boolean available(){return true;}
   @JavascriptInterface public double microphoneLevel(){return BackgroundService.microphoneLevel;}
   @JavascriptInterface public String playbackStatus(){return PlaybackService.snapshot;}
   @JavascriptInterface public String playbackWrite(String token,int index,String data,boolean append){
