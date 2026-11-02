@@ -5,16 +5,15 @@ Settings → Display → Preview upcoming changes → Refresh preview opts into 
 preview instantly. Refresh is manual; valid previews are cached for offline use.
 Fetch failures keep the last valid design; invalid cache starts with the installed one.
 
-The current feed selects the approved category-row layout with `libraryLayout: "categories"`
-(requires preview support from APK 1.0.14). This predefined local preset moves the
-existing type selector beside the topic chips, hides the redundant Search by meaning
-button and adds a fading divider below. The type selector still uses its original
-menu until the user chooses a replacement menu design. Switching preview off restores
-the original layout and keeps the selected type unchanged. For each requested design iteration, edit only
-this JSON and publish it to main/GitHub Pages. No APK build or backend deployment is
-needed for supported appearance changes. Wait for Pages deployment before asking the
-user to refresh. When approved, transfer the rules into the installed stylesheet in
-the next normal APK and clear the feed when appropriate.
+As of 1.0.18 the approved category-row library layout is the installed default:
+Everything sits beside topic chips, Search by meaning is hidden, and the fading
+divider is visible below the row. This is static markup and installed CSS, so it
+works offline and with Preview disabled. Cached `libraryLayout: "categories"`
+feeds remain valid for compatibility but no longer move the controls. Turning
+Preview off only removes optional appearance rules, never approved installed UI.
+For future supported design iterations, edit the JSON and publish it to Pages;
+no APK is needed for supported properties. Promote approved work into installed
+markup/styles in the next requested build, and verify with Preview disabled.
 
 Example:
 

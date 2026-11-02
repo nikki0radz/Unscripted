@@ -56,3 +56,10 @@ and native background work. The detailed requirements below remain the acceptanc
   independent of installed-app updates, without granting preview content access to
   live diary data. Any expansion of the in-app preview engine needs a deliberate,
   bundled app update; don't silently describe it as already supported.
+
+## Approved-design release audit — 1.0.18
+
+See APPROVED-CHANGES.md for the complete delivery checklist. Corrected the missed
+promotion of the category-row Everything filter, hidden Search by meaning action,
+and fading divider: all are now installed defaults, independent of Preview settings.
+Future releases must test approved UI with Preview off and with old cached previews.

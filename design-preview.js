@@ -58,24 +58,10 @@
     try { localStorage.setItem(KEY, JSON.stringify({enabled,cached})); return true; }
     catch { return false; }
   }
-  function sizeLibraryFilter() {
-    const select = $('libraryKind');
-    if (select?.style?.setProperty) select.style.setProperty('--library-filter-chars',Math.min(28,Math.max(10,select.selectedOptions[0].textContent.length)));
-  }
-  $('libraryKind')?.addEventListener?.('change',sizeLibraryFilter);
-  function applyLibraryLayout(active) {
-    const row = $('libraryFiltersRow'), control = $('libraryKindControl'), search = $('librarySearch');
-    if (!row?.insertBefore || !control || !search) return;
-    const library = row.closest('.library-section');
-    if (active) row.insertBefore(control,row.firstChild);
-    else search.before(control);
-    library.classList.toggle('preview-library-categories',active);
-    library.querySelector('.library-preview-divider').hidden = !active;
-    sizeLibraryFilter();
-  }
   function apply() {
     style.textContent = enabled && cached ? compile(cached) : '';
-    applyLibraryLayout(enabled && cached?.libraryLayout === 'categories'); paint();
+    // Approved library layout is installed markup; preview toggles only optional rules.
+    paint();
   }
   function turnOff() {
     request++; controller?.abort(); busy = false; enabled = false; apply();

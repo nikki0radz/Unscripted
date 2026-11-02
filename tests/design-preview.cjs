@@ -21,8 +21,8 @@ function setup(saved) {
   const nodes = new Map(), storage = new Map();
   if (saved) storage.set('unscripted-design-preview-v1',saved);
   const el = id => {if(!nodes.has(id))nodes.set(id,{hidden:false,disabled:false,checked:false,textContent:''});return nodes.get(id);};
-  let filterPosition='original',layoutOn=false;
-  const divider={hidden:true};
+  let filterPosition='categories',layoutOn=true;
+  const divider={hidden:false};
   el('libraryFiltersRow').insertBefore=control=>{assert.equal(control,el('libraryKindControl'));filterPosition='categories';};
   el('libraryFiltersRow').closest=()=>({classList:{toggle:(name,active)=>layoutOn=active},querySelector:()=>divider});
   el('librarySearch').before=control=>{assert.equal(control,el('libraryKindControl'));filterPosition='original';};
@@ -39,6 +39,17 @@ function setup(saved) {
   return {el,storage,requests,position:()=>filterPosition,layout:()=>layoutOn,divider,setResponse:v=>response=v,setFail:v=>fail=v,hold:p=>resolveFetch=p};
 }
 (async()=>{
+  const html=fs.readFileSync('index.html','utf8');
+  const row=html.slice(html.indexOf('<div id="libraryFiltersRow">'),html.indexOf('<div id="entriesList"'));
+  assert(row.includes('id="libraryKindControl"'),'Approved filter must be in categories without any preview script');
+  assert(row.indexOf('id="libraryKindControl"')<row.indexOf('id="topicFilters"'));
+  assert.match(html,/<section class="library-section library-categories">/);
+  assert.match(html,/<button id="semanticSearch"[^>]* hidden>/);
+  assert.match(row,/class="library-preview-divider" aria-hidden="true">/);
+  for(const saved of [undefined, '{broken', JSON.stringify({enabled:false,cached:{...base,libraryLayout:'categories'}}), JSON.stringify({enabled:true,cached:{...base,libraryLayout:'categories'}})]){
+    const installed=setup(saved);installed.el('stopDesignPreview').onclick();
+    assert.equal(installed.position(),'categories');assert.equal(installed.divider.hidden,false);
+  }
   const ui=setup(); assert.equal(ui.requests.length,0,'No preview request without opt-in');
   assert.equal(ui.el('style').textContent,'');
   await ui.el('refreshDesignPreview').onclick();
@@ -63,7 +74,7 @@ function setup(saved) {
   assert.equal(layout.position(),'categories');assert.equal(layout.layout(),true);assert.equal(layout.divider.hidden,false);
   assert.equal(layout.el('libraryKind').value,'interviews','Moving the filter preserves its selection');
   assert.match(layout.el('designPreviewStatus').textContent,/Softer cards/,'A preset without custom rules still reports the active design');
-  layout.el('stopDesignPreview').onclick();assert.equal(layout.position(),'original');assert.equal(layout.layout(),false);assert.equal(layout.divider.hidden,true);
+  layout.el('stopDesignPreview').onclick();assert.equal(layout.position(),'categories');assert.equal(layout.layout(),true);assert.equal(layout.divider.hidden,false);
   const broken=setup('{broken');assert.equal(broken.el('style').textContent,'');
   console.log('Passed: constrained appearance rules, opt-in, refresh, cached/offline fallback, restore and cancellation.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
