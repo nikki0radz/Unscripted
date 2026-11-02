@@ -48,3 +48,16 @@ those modules were packaged. The omission was the default library layout.
 
 These future items are tracked in BACKLOG.md. The approved backup screen does not
 imply these larger storage changes have been implemented.
+
+
+## Approved compact entry layout — 2 November 2026 (source implemented; APK pending)
+
+- Slim joined toolbar for Refresh summary, Another perspective and Write a thought.
+- Clarify beside the summary heading; compact correction editor with Cancel left and Update summary right. Manual Edit remains available.
+- Topics scroll horizontally in one row; reduced section spacing and fading divider.
+- Recording row: small Play, seek track with 9px thumb, duration, Transcript, then information. Controls share a centre line with equal 8px separator padding.
+- Recording date/time appears only when information is opened. Transcript expansion and search-to-transcript continue to use the same per-recording content.
+- Smaller red Delete entry; recording names remain available to accessibility and playback metadata.
+- Installed default, independent of appearance preview. No audio, transcripts or stored entries migrated.
+
+Validation: all 15 Android workflow checks pass; DOM interaction check covers info, transcript/rerender state, written notes, clarification draft/save/cancel and focus. Browser rendering could not be checked in this environment (browser download failed). No signed APK or phone validation completed yet.

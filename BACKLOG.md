@@ -63,3 +63,7 @@ See APPROVED-CHANGES.md for the complete delivery checklist. Corrected the misse
 promotion of the category-row Everything filter, hidden Search by meaning action,
 and fading divider: all are now installed defaults, independent of Preview settings.
 Future releases must test approved UI with Preview off and with old cached previews.
+
+
+### Compact entry layout delivery (2 November 2026)
+Approved slim toolbar, summary-heading Clarify, horizontal topics, compact aligned recording/Transcript/info row, 9px seek thumb and smaller red Delete are implemented in source. Pending: signed test APK through release workflow and phone acceptance; do not mark as shipped until that candidate is delivered.

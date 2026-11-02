@@ -374,3 +374,48 @@ details[open]>summary>.soft-disclosure-icon>svg,[aria-expanded=true]>.soft-discl
 .backup-advanced>summary{font-size:calc(12px * var(--text-scale,1));color:var(--muted)}
 .backup-advanced .settings-actions{display:flex;flex-wrap:wrap;gap:8px}
 .backup-advanced button{font-size:calc(12px * var(--text-scale,1))}
+
+/* Approved slim entry toolbar and aligned recording controls. */
+#entryView .entry-block{margin-top:16px}
+#entryView .entry-summary-block .section-title-row{gap:8px}
+#entryView .entry-summary-block .section-title-row h2{margin-right:auto}
+#entryView .clarify-summary-button{font:inherit;font-size:calc(12px * var(--text-scale,1));padding:5px 10px;min-height:32px;border:0;border-radius:18px;background:color-mix(in srgb,var(--accent) 12%,var(--panel));color:var(--accent)}
+#entryView #editSummaryButton{font-size:calc(11px * var(--text-scale,1));padding:5px}
+#entryView .summary-correction{margin:0;border:0;padding:0}
+#entryView .summary-correction>summary[hidden]{display:none!important}
+#entryView .summary-correction .correction-editor{margin:10px 0 12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+#entryActions{display:grid;grid-template-columns:1fr 1.16fr 1fr;gap:0;margin:12px 0 16px;padding:3px;border:1px solid var(--line);border-radius:11px;background:color-mix(in srgb,var(--accent) 8%,var(--panel));overflow:hidden}
+#entryActions .button-soft{display:flex!important;flex-direction:row;min-height:42px;margin:0;padding:5px 6px;gap:5px;border:0;border-radius:0;background:transparent;box-shadow:none;font-size:calc(11px * var(--text-scale,1));line-height:1.3}
+#entryActions .button-soft+button{border-left:1px solid var(--line)}
+#entryActions .entry-action-icon,#entryActions .entry-action-icon svg{width:15px;height:15px}
+#entryActions .button-soft>span:last-child{width:auto}
+#entryView #entryTags{display:flex;flex-wrap:nowrap;gap:7px;overflow-x:auto;scrollbar-width:thin;margin:5px 0 12px;padding-bottom:4px}
+#entryTags .tag{flex:none;white-space:nowrap}
+#recordingsSection{position:relative;border-top:0;padding-top:15px}
+#recordingsSection::before{content:'';position:absolute;left:0;right:0;top:0;height:1px;background:linear-gradient(90deg,transparent,var(--line),transparent)}
+#entryView #recordingsSection h2,#entryView .entry-topics-block h2{font-size:calc(20px * var(--text-scale,1))}
+#entryView #addToEntryButton{padding:5px 8px;min-height:36px;border:0;background:transparent;font-size:calc(12px * var(--text-scale,1))}
+#entryRecordings{gap:0}
+#entryRecordings .recording-archive-card{padding:5px 0}
+.recording-control-row{display:flex;align-items:center;gap:0;min-width:0;min-height:44px}
+#entryRecordings .recording-player{flex:1;min-width:0;grid-template-columns:36px minmax(20px,1fr) max-content;gap:0!important;border:0;border-radius:0;background:transparent;padding:0!important}
+#entryRecordings .recording-player>button{grid-column:1;grid-row:1;width:36px;height:44px;min-height:44px;border:0;border-radius:0;background:radial-gradient(circle at center,color-mix(in srgb,var(--accent) 12%,var(--panel)) 0 13px,transparent 13.5px)}
+#entryRecordings .recording-player>button svg{width:12px;height:12px}
+#entryRecordings .recording-player-time{grid-column:3;grid-row:1;align-self:center;padding:0 8px;font-size:calc(11px * var(--text-scale,1))}
+#entryRecordings .recording-player input{grid-column:2;grid-row:1;align-self:center;appearance:none;-webkit-appearance:none;min-height:44px;height:44px;padding:0;border:0;border-radius:0;background:transparent}
+#entryRecordings .recording-player input::-webkit-slider-runnable-track{height:3px;background:var(--line);border-radius:3px}
+#entryRecordings .recording-player input::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:9px;height:9px;margin-top:-3px;border:0;border-radius:50%;background:var(--text);box-shadow:none}
+#entryRecordings .recording-player input::-moz-range-track{height:3px;background:var(--line);border:0;border-radius:3px}
+#entryRecordings .recording-player input::-moz-range-thumb{width:9px;height:9px;border:0;border-radius:50%;background:var(--text);box-shadow:none}
+.recording-control-row>.recording-transcript-button,.recording-control-row>.recording-info-button{position:relative;display:flex;align-items:center;justify-content:center;flex:none;min-height:44px;margin:0;padding:0 8px;border:0;background:none;border-radius:0;color:var(--accent);font:inherit;font-size:calc(11px * var(--text-scale,1));white-space:nowrap}
+.recording-control-row>.recording-info-button{width:32px;font-size:16px;line-height:1}
+.recording-control-row>.recording-transcript-button::before,.recording-control-row>.recording-info-button::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:1px;height:16px;background:var(--line)}
+#entryView .inline-recording-transcript{margin:0}
+#entryView .inline-recording-transcript>summary{display:none!important}
+#entryRecordings .transcript-body{margin:6px 0 10px;padding:10px 12px;border-radius:10px;background:var(--panel2)}
+#entryRecordings .recording-info-panel{display:block;margin:3px 0 8px;padding:8px 10px;text-align:left;font-size:calc(12px * var(--text-scale,1));border-radius:9px;background:var(--panel2)}
+#entryRecordings .recording-info-panel[hidden]{display:none!important}
+#entryFooter{margin-top:14px;padding-top:8px;gap:10px}
+#entryFooter #deleteEntryButton{color:#e39794;font-size:calc(11px * var(--text-scale,1));padding:3px 5px;min-height:44px}
+
+.recording-transcript-button svg{display:block;flex:none;width:13px;height:13px;margin-right:4px}

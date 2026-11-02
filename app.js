@@ -205,10 +205,25 @@
       card.setAttribute("aria-label",label);
       if(!hasAudio)card.append(make("h3","recording-label",label));
       if(part.question)card.append(make("p","recording-question",part.question));
-      if(hasAudio)card.append(window.UnscriptedRecordingPlayer.create(part.clips,getAudio,label,{entryId:entry.id,title:entry.title}));
-      const date=make("time","voice-note-date",fmtDate(part.createdAt)+" · "+fmtTime(part.createdAt));date.dateTime=part.createdAt;card.append(date);
+      const row=make("div","recording-control-row");
+      if(hasAudio){row.append(window.UnscriptedRecordingPlayer.create(part.clips,getAudio,label,{entryId:entry.id,title:entry.title,compact:true}));card.append(row);}
+      const date=make("time","voice-note-date",fmtDate(part.createdAt)+" · "+fmtTime(part.createdAt));date.dateTime=part.createdAt;
       const details=make("details","recording-transcript"),key=entry.id+":"+part.id;
-      details.open=openRecordingTranscripts.has(key);details.ontoggle=()=>{if(details.open)openRecordingTranscripts.add(key);else openRecordingTranscripts.delete(key);};
+      details.id="recording-transcript-"+part.id;
+      const transcriptButton=make("button","recording-transcript-button","Transcript");transcriptButton.type="button";
+      transcriptButton.innerHTML='<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h6"/></svg><span>Transcript</span>';
+      transcriptButton.setAttribute("aria-controls",details.id);transcriptButton.setAttribute("aria-label","Show transcript for "+label);
+      details.open=openRecordingTranscripts.has(key);transcriptButton.setAttribute("aria-expanded",String(details.open));
+      details.ontoggle=()=>{transcriptButton.setAttribute("aria-expanded",String(details.open));if(details.open)openRecordingTranscripts.add(key);else openRecordingTranscripts.delete(key);};
+      transcriptButton.onclick=()=>{details.open=!details.open;transcriptButton.setAttribute("aria-expanded",String(details.open));};
+      if(hasAudio){
+        details.classList.add("inline-recording-transcript");
+        const info=make("button","recording-info-button","ⓘ");info.type="button";
+        info.setAttribute("aria-label","Recording information for "+label);info.setAttribute("aria-expanded","false");
+        date.id="recording-info-"+part.id;date.hidden=true;date.classList.add("recording-info-panel");
+        info.setAttribute("aria-controls",date.id);info.onclick=()=>{date.hidden=!date.hidden;info.setAttribute("aria-expanded",String(!date.hidden));};
+        row.append(transcriptButton,info);card.append(date);
+      }else card.append(date);
       details.append(make("summary","",hasAudio?"View full transcript":"View written answer"));
       const body=make("p","transcript-body",text||"Transcript not ready yet.");details.append(body);
       if(part.reflectionAnswer||part.interviewQuestion){const edit=make("button","text-action","Edit transcript");edit.type="button";edit.onclick=()=>openEditor("Edit answer transcript",part.answer||"",async value=>{if(!value.trim())return;const fresh=await transaction("entries","readonly",store=>store.get(entry.id));const saved=fresh?.parts.find(p=>p.id===part.id);if(!saved)throw Error("This answer no longer exists.");saved.answer=value;saved.answerEdited=true;saved.text=(part.interviewQuestion?"Interview question: ":"Reflection question: ")+part.question+"\nYour answer: "+value;saved.summary="";saved.bulletPoints=[];await saveEntry(fresh);await refreshEntries();renderEntry();processEntry(entry.id);});details.append(edit);}
@@ -486,8 +501,13 @@
     let panel=$("summaryCorrection");
     if(!panel){panel=make("details","summary-correction");panel.id="summaryCorrection";anchor.after(panel);}
     panel.replaceChildren();panel.open=expandedCorrections.has(entry.id);
-    panel.ontoggle=()=>{if(panel.open)expandedCorrections.add(entry.id);else expandedCorrections.delete(entry.id);};
-    const heading=make("summary","","Did I understand you wrong?");
+    let trigger=$("clarifySummaryButton");
+    if(!trigger){trigger=make("button","clarify-summary-button","Clarify");trigger.id="clarifySummaryButton";trigger.type="button";$("editSummaryButton").before(trigger);}
+    trigger.setAttribute("aria-controls",panel.id);trigger.setAttribute("aria-expanded",String(panel.open));
+    trigger.setAttribute("aria-label","Clarify the AI summary");
+    trigger.onclick=()=>{panel.open=!panel.open;trigger.setAttribute("aria-expanded",String(panel.open));if(panel.open)$("summaryCorrectionText").focus();};
+    panel.ontoggle=()=>{trigger.setAttribute("aria-expanded",String(panel.open));if(panel.open)expandedCorrections.add(entry.id);else expandedCorrections.delete(entry.id);};
+    const heading=make("summary","","Clarify summary");heading.hidden=true;
     const label=make("label","tiny","What should I understand differently?");label.htmlFor="summaryCorrectionText";
     const input=make("textarea");input.id="summaryCorrectionText";input.rows=2;input.maxLength=2000;
     input.placeholder="e.g. Not Tiffy, Pippy — that’s my friend’s name.";
@@ -498,7 +518,7 @@
     const status=make("p","tiny correction-status");status.setAttribute("role","status");
     button.onclick=async()=>{button.disabled=true;input.disabled=true;status.textContent="Saving your note…";try{await applySummaryCorrection(entry.id,input.value);}catch(error){status.textContent=error.message;button.disabled=false;input.disabled=false;}};
     const cancel=make("button","correction-cancel","Cancel");cancel.type="button";
-    cancel.onclick=()=>{correctionDrafts.delete(entry.id);input.value=entry.summaryCorrection||"";expandedCorrections.delete(entry.id);panel.open=false;heading.focus();};
+    cancel.onclick=()=>{correctionDrafts.delete(entry.id);input.value=entry.summaryCorrection||"";expandedCorrections.delete(entry.id);panel.open=false;trigger.setAttribute("aria-expanded","false");trigger.focus();};
     const actions=make("div","correction-actions");actions.append(cancel,button);
     const editor=make("div","correction-editor");editor.append(label,input,actions,status);
     panel.append(heading,editor);
