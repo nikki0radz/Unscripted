@@ -67,3 +67,8 @@ Future releases must test approved UI with Preview off and with old cached previ
 
 ### Compact entry layout delivery (2 November 2026)
 Approved slim toolbar, summary-heading Clarify, horizontal topics, compact aligned recording/Transcript/info row, 9px seek thumb and smaller red Delete are implemented in source. Packaged in the locally built, original-key-signed 1.0.19 (code 20) APK. Phone acceptance remains pending; the stable update feed is unchanged. Use the established local build/sign method until automated signing is explicitly configured and verified.
+
+
+
+### Home text capture — 3 November 2026
+Small Write a thought shortcut under the main microphone. Saves a normal text note locally without microphone permission or an AI connection; add audio to the same entry later. Blank/cancelled new notes do not create empty entries. Save failures retain the editor text and duplicate saves are blocked. Included in locally built 1.0.20 (code 21), signed with the original certificate. All 16 workflow checks pass, including text capture failure/cancel/duplicate-save coverage. Phone acceptance pending; stable feed unchanged.

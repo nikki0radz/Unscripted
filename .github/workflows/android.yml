@@ -30,6 +30,7 @@ jobs:
       - run: node tests/design-preview.cjs
       - run: node tests/library-type-menu.cjs
       - run: node tests/entry-layout.cjs
+      - run: node tests/written-thought.cjs
       - run: node tests/summary-corrections.cjs
       - run: node tests/recording-player.cjs
       - run: node tests/backup-import.cjs

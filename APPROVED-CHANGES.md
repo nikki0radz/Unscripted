@@ -61,3 +61,8 @@ imply these larger storage changes have been implemented.
 - Installed default, independent of appearance preview. No audio, transcripts or stored entries migrated.
 
 Validation: all 15 Android workflow checks pass; DOM interaction check covers info, transcript/rerender state, written notes, clarification draft/save/cancel and focus. Browser rendering could not be checked in this environment (browser download failed). Local APK built and signed with the original certificate; packaged UI assets match source byte-for-byte. Phone acceptance remains pending. Delivered directly without stable-feed promotion.
+
+
+## Home text capture — 1.0.20 (3 November 2026)
+
+Small themed Write a thought button below the main microphone. Written thoughts save locally as normal entries, with a title from the first line, and support adding recordings later. Cancel and blank submissions create no empty entries; failed saves retain text and repeated taps cannot duplicate a pending save. Existing entry text additions remain supported. All 16 workflow checks pass. Local APK signed with the original certificate; bundled assets verified against source. Phone acceptance pending; stable feed unchanged.

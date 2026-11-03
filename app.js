@@ -231,21 +231,31 @@
     }
     if(!target.children.length)target.append(make("p","tiny","No recordings yet."));
   }
-  function openEditor(title, value, callback, label = "Your text") { state.editorCallback = callback; $("editorTitle").textContent = title; $("editorLabel").textContent = label; $("editorInput").value = value; $("editorModal").hidden = false; $("editorInput").focus(); }
-  function closeEditor() { $("editorModal").hidden = true; state.editorCallback = null; }
-  async function submitEditor() { const cb = state.editorCallback; if (!cb) return; const value = $("editorInput").value.trim(); closeEditor(); try { await cb(value); } catch (error) { showToast("Could not save: " + error.message); } }
+  let editorSaving = false, editorReturnFocus = null;
+  function openEditor(title, value, callback, label = "Your text") { editorReturnFocus = document.activeElement; state.editorCallback = callback; $("editorTitle").textContent = title; $("editorLabel").textContent = label; $("editorInput").value = value; $("editorModal").hidden = false; $("editorInput").focus(); }
+  function closeEditor() { if (editorSaving) return; $("editorModal").hidden = true; state.editorCallback = null; editorReturnFocus?.focus?.(); }
+  async function submitEditor() {
+    const cb = state.editorCallback; if (!cb || editorSaving) return;
+    const value = $("editorInput").value.trim(); editorSaving = true;
+    $("editorSave").disabled = true; $("editorInput").disabled = true;
+    try { const saved = await cb(value); editorSaving = false; if (saved !== false) closeEditor(); }
+    catch (error) { showToast("Could not save: " + error.message); }
+    finally { editorSaving = false; $("editorSave").disabled = false; $("editorInput").disabled = false; if (!$("editorModal").hidden) $("editorInput").focus(); }
+  }
   function openChoice() { if (!currentEntry()) return; $("choiceModal").hidden = false; }
   function closeChoice() { $("choiceModal").hidden = true; }
   function newEntry() { const now = new Date().toISOString(); return { id: uid(), title: "A thought from " + fmtDate(now), summary: "", tags: [], parts: [], createdAt: now, updatedAt: now, aiError: "" }; }
   async function writeThought(id) {
-    if (!id) { const entry = newEntry(); await saveEntry(entry); await refreshEntries(); id = entry.id; }
-    openEntry(id);
-    openEditor("Add a written thought", "", async (value) => {
-      if (!value) return;
-      const entry = state.entries.find((e) => e.id === id); if (!entry) return;
+    openEditor(id ? "Add a written thought" : "Write a thought", "", async (value) => {
+      if (!value) { showToast("Write a little something first."); return false; }
+      const entry = id ? await transaction("entries", "readonly", store => store.get(id)) : newEntry();
+      if (!entry) throw Error("This entry no longer exists.");
+      if (!id) entry.title = value.split(/\n/)[0].slice(0, 70);
       entry.parts.push({ type: "note", id: uid(), createdAt: new Date().toISOString(), text: value });
-      await saveEntry(entry); await refreshEntries(); renderEntry(); if (activeAI()) processEntry(id);
-    }, "What would you like to add?");
+      await saveEntry(entry); await refreshEntries(); openEntry(entry.id);
+      showToast("Thought saved. You can add a recording later.");
+      if (activeAI()) processEntry(entry.id);
+    }, id ? "What would you like to add?" : "Jot it down now. Come back and talk about it later.");
   }
   function supportedMime() { if (!window.MediaRecorder) return ""; return ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg;codecs=opus"].find((type) => MediaRecorder.isTypeSupported(type)) || ""; }
   function startRecordingMeter(rec){rec.stopMeter?.();rec.stopMeter=window.UnscriptedVoiceMeter?.start({element:document.getElementById("recordingVoiceMeter"),stream:rec.stream,active:()=>state.recording===rec&&!rec.paused&&!rec.closing&&!rec.saving&&rec.recorder?.state==="recording"});}
@@ -908,7 +918,7 @@
   function chooseWheel(e){const rect=$("colourWheel").getBoundingClientRect();const dx=e.clientX-(rect.left+rect.width/2),dy=e.clientY-(rect.top+rect.height/2),radius=rect.width/2;accent.h=(Math.atan2(dy,dx)*180/Math.PI+360)%360;accent.s=Math.min(Math.hypot(dx,dy)/(radius*.92),1);updatePicker();}
   function bindEvents() {
     $("homeLogo").onclick=()=>switchView("home");$("navLibrary").onclick=()=>switchView("home");$("navAsk").onclick=()=>switchView("ask");$("settingsButton").onclick=()=>switchView("settings");$("settingsBack").onclick=()=>switchView("home");$("entryBack").onclick=()=>switchView("home");
-    $("libraryKind").onchange=()=>{state.libraryKind=$("libraryKind").value;searchRevision++;semanticResults=null;renderHome();};$("startNewButton").onclick=()=>startRecording(null);$("navRecord").onclick=()=>startRecording(null);$("continueLastButton").onclick=()=>{if(state.entries[0])startRecording(state.entries[0].id);};$("searchInput").oninput=()=>{searchRevision++;semanticResults=null;renderHome();};
+    $("libraryKind").onchange=()=>{state.libraryKind=$("libraryKind").value;searchRevision++;semanticResults=null;renderHome();};$("startNewButton").onclick=()=>startRecording(null);$("writeNewButton").onclick=()=>writeThought(null);$("navRecord").onclick=()=>startRecording(null);$("continueLastButton").onclick=()=>{if(state.entries[0])startRecording(state.entries[0].id);};$("searchInput").oninput=()=>{searchRevision++;semanticResults=null;renderHome();};
     $("cancelRecordingButton").onclick=requestCancelRecording;$("keepRecordingButton").onclick=()=>{$("cancelRecordingModal").hidden=true;};$("confirmCancelRecording").onclick=cancelRecording;
     $("pauseRecording").onclick=togglePause;$("finishRecording").onclick=requestFinishRecording;$("continueRecording").onclick=keepRecording;$("confirmFinishRecording").onclick=confirmFinishRecording;
     $("addToEntryButton").onclick=openChoice;$("choiceClose").onclick=closeChoice;$("choiceRecord").onclick=()=>{const id=state.selected;closeChoice();startRecording(id);};$("choiceWrite").onclick=()=>{const id=state.selected;closeChoice();writeThought(id);};$("addNoteButton").onclick=()=>writeThought(state.selected);
@@ -935,7 +945,7 @@
   async function init() {
     bindEvents(); bindEnhancements(); applyAccent(localStorage.getItem("unscripted-accent") || "#b8d2ab");
     try { state.db = await getDb(); await refreshEntries(); renderHome();if(window.UnscriptedNative){await window.UnscriptedNative.sync();for(const id of JSON.parse(localStorage.getItem("unscripted-native-processing")||"[]"))if(state.entries.some(e=>e.id===id))processEntry(id);} }
-    catch (error) { showToast("Private storage unavailable: " + error.message); $("startNewButton").disabled=true; $("navRecord").disabled=true; }
+    catch (error) { showToast("Private storage unavailable: " + error.message); $("startNewButton").disabled=true; $("writeNewButton").disabled=true; $("navRecord").disabled=true; }
     if(!window.UnscriptedNative && "serviceWorker" in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register("./service-worker.js").catch(()=>{});
     if("storage" in navigator && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
   }
@@ -977,4 +987,3 @@
   };
   init();
 })();
-

@@ -419,3 +419,9 @@ details[open]>summary>.soft-disclosure-icon>svg,[aria-expanded=true]>.soft-discl
 #entryFooter #deleteEntryButton{color:#e39794;font-size:calc(11px * var(--text-scale,1));padding:3px 5px;min-height:44px}
 
 .recording-transcript-button svg{display:block;flex:none;width:13px;height:13px;margin-right:4px}
+
+
+/* Quiet text capture beside the main recording action. */
+.record-hero .home-write-button{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;margin:14px auto 0;padding:8px 14px;border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);border-radius:24px;background:color-mix(in srgb,var(--accent) 7%,transparent);color:var(--accent);font:inherit;font-size:calc(13px * var(--text-scale,1));cursor:pointer}
+.home-write-button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.home-write-button:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
